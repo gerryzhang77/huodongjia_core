@@ -36,6 +36,12 @@ export interface UserProfile {
     wechat?: string;
   };
   publicFields?: PublicProfileField[];
+  nfcDisplay?: {
+    participantId?: string | null;
+    eventId?: string | null;
+    eventTitle?: string | null;
+    registrationTypeName?: string | null;
+  } | null;
   privacy_settings?: ProfilePrivacySettings;
   /** 是否对外公开在"发现用户"列表（用户级开关，opt-in） */
   discoverable?: boolean;

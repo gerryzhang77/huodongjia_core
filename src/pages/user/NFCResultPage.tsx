@@ -9,14 +9,23 @@ import {
   Link as LinkIcon,
   Radio,
   RefreshCw,
+  Settings,
   ShieldAlert,
+  X,
   Zap,
 } from "lucide-react";
 import { useAuthStore } from "@/features/auth/stores/authStore";
 import { getCurrentUser } from "@/features/auth/services";
 import { Toast } from "@/components/ui/Toast";
 import { api } from "@/services/api";
-import { bindNfcTag, resolveNfcTag, type NfcResolveData } from "@/services/nfcApi";
+import {
+  bindNfcTag,
+  getNfcDisplayEnrollments,
+  resolveNfcTag,
+  updateNfcDisplayConfig,
+  type NfcDisplayEnrollmentOption,
+  type NfcResolveData,
+} from "@/services/nfcApi";
 import { updateUserProfile, type UserProfile } from "@/services/userApi";
 import { PublicProfileCard } from "@/features/user/profile";
 import { useImageUpload, type UploadHandle } from "@/features/uploads";
@@ -182,6 +191,140 @@ const StatusPanel: FC<{
     </div>
   </div>
 );
+
+const EnrollmentOptionPicker: FC<{
+  options: NfcDisplayEnrollmentOption[];
+  selectedEventId: string;
+  loading?: boolean;
+  saving?: boolean;
+  actionLabel: string;
+  emptyText: string;
+  variant?: "card" | "drawer";
+  open?: boolean;
+  onSelect: (eventId: string) => void;
+  onSubmit: () => void;
+  onClose?: () => void;
+}> = ({
+  options,
+  selectedEventId,
+  loading,
+  saving,
+  actionLabel,
+  emptyText,
+  variant = "card",
+  open = true,
+  onSelect,
+  onSubmit,
+  onClose,
+}) => {
+  const selectedOption = options.find((option) => option.eventId === selectedEventId);
+  const content = (
+    <>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+            选择展示的报名表
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            碰一碰时会优先展示这份活动报名信息。
+          </p>
+        </div>
+        {variant === "drawer" && onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+            aria-label="关闭"
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+          <RefreshCw size={16} className="animate-spin" />
+          正在加载报名表
+        </div>
+      ) : options.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-400 dark:border-gray-700">
+          {emptyText}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {options.map((option) => {
+            const selected = option.eventId === selectedEventId;
+            return (
+              <button
+                key={option.participantId}
+                type="button"
+                onClick={() => onSelect(option.eventId)}
+                className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
+                  selected
+                    ? "border-primary-300 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/20"
+                    : "border-gray-100 bg-white hover:border-primary-200 dark:border-gray-700 dark:bg-gray-800"
+                }`}
+              >
+                <span className="block truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {[option.eventTitle, option.registrationTypeName].filter(Boolean).join(" · ")}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedOption && (
+        <p className="mt-3 rounded-lg bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-500 dark:bg-gray-700/40 dark:text-gray-300">
+          当前选择：
+          {[selectedOption.eventTitle, selectedOption.registrationTypeName]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={!selectedEventId || loading || saving || options.length === 0}
+        className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {saving ? <RefreshCw size={16} className="animate-spin" /> : <Settings size={16} />}
+        <span>{saving ? "正在保存" : actionLabel}</span>
+      </button>
+    </>
+  );
+
+  if (variant === "drawer") {
+    return (
+      <div
+        className={`fixed inset-0 z-50 transition-opacity ${
+          open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/35"
+          aria-label="关闭报名表选择"
+          onClick={onClose}
+        />
+        <aside
+          className={`absolute right-0 top-0 flex h-full w-full max-w-lg flex-col bg-white shadow-2xl transition-transform duration-300 dark:bg-gray-800 ${
+            open ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          <div className="flex-1 overflow-y-auto p-4 pt-6">{content}</div>
+        </aside>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-4 -mt-10 rounded-2xl bg-white p-4 shadow-lg dark:bg-gray-800">
+      {content}
+    </div>
+  );
+};
 
 const NfcProfileCard: FC<{
   profile: UserProfile;
@@ -392,6 +535,8 @@ const TokenNfcPage: FC<{ token: string }> = ({ token }) => {
     token: authToken,
     setAuth,
   } = useAuthStore();
+  const [selectedDisplayEventId, setSelectedDisplayEventId] = useState("");
+  const [showDisplayConfig, setShowDisplayConfig] = useState(false);
 
   const query = useQuery({
     queryKey: ["nfc", "tag", token],
@@ -402,9 +547,10 @@ const TokenNfcPage: FC<{ token: string }> = ({ token }) => {
   });
 
   const bindMutation = useMutation({
-    mutationFn: () => bindNfcTag(token),
+    mutationFn: () => bindNfcTag(token, selectedDisplayEventId || undefined),
     onSuccess: (data) => {
       queryClient.setQueryData<NfcResolveData>(["nfc", "tag", token], data);
+      setSelectedDisplayEventId(data.tag.displayConfig?.eventId || selectedDisplayEventId);
       Toast.show({ icon: "success", content: "手环绑定成功" });
     },
     onError: (error) => {
@@ -415,6 +561,36 @@ const TokenNfcPage: FC<{ token: string }> = ({ token }) => {
       queryClient.invalidateQueries({ queryKey: ["nfc", "tag", token] });
     },
   });
+
+  const enrollmentOptionsQuery = useQuery({
+    queryKey: ["nfc", "tag", token, "enrollments"],
+    queryFn: () => getNfcDisplayEnrollments(token),
+    enabled: Boolean(currentUser),
+    staleTime: 30 * 1000,
+  });
+
+  const configMutation = useMutation({
+    mutationFn: () => updateNfcDisplayConfig(token, selectedDisplayEventId),
+    onSuccess: (data) => {
+      queryClient.setQueryData<NfcResolveData>(["nfc", "tag", token], data);
+      setSelectedDisplayEventId(data.tag.displayConfig?.eventId || selectedDisplayEventId);
+      setShowDisplayConfig(false);
+      Toast.show({ icon: "success", content: "展示内容已更新" });
+    },
+    onError: (error) => {
+      Toast.show({
+        icon: "fail",
+        content: getErrorMessage(error, "更新失败，请稍后重试"),
+      });
+    },
+  });
+
+  useEffect(() => {
+    const options = enrollmentOptionsQuery.data?.options || [];
+    if (selectedDisplayEventId || options.length === 0) return;
+    const selected = options.find((option) => option.selected);
+    setSelectedDisplayEventId(selected?.eventId || options[0].eventId);
+  }, [enrollmentOptionsQuery.data?.options, selectedDisplayEventId]);
 
   const redirect = buildRedirect(location);
   const goLogin = () => navigate(`/login?redirect=${encodeURIComponent(redirect)}`);
@@ -448,6 +624,10 @@ const TokenNfcPage: FC<{ token: string }> = ({ token }) => {
   const handleBind = () => {
     if (!currentUser) {
       goLogin();
+      return;
+    }
+    if (!selectedDisplayEventId) {
+      Toast.show({ icon: "fail", content: "请选择要展示的报名表" });
       return;
     }
     bindMutation.mutate();
@@ -488,26 +668,36 @@ const TokenNfcPage: FC<{ token: string }> = ({ token }) => {
   const isSelf = data.viewer.isSelf;
   const authenticated = data.viewer.isAuthenticated || !!currentUser;
   const canEditCard = isSelf && authenticated;
+  const enrollmentOptions = enrollmentOptionsQuery.data?.options || [];
 
   if (status === "unbound") {
     return (
       <PageShell>
         <Header title="NFC 手环" subtitle="首次绑定" onBack={goBack} />
-        <StatusPanel
-          icon={LinkIcon}
-          title="这是一只未绑定的手环"
-          description={
-            authenticated
-              ? `将手环绑定到当前账号 ${currentUser?.name || currentUser?.account || ""}。绑定后，别人碰你的手环会看到你的个人卡片。`
-              : "登录或注册后即可把这只手环绑定到你的账号。绑定后，别人碰你的手环会看到你的个人卡片。"
-          }
-          actionLabel={authenticated ? "绑定到我的账号" : "登录后绑定"}
-          actionIcon={authenticated ? LinkIcon : LogIn}
-          actionLoading={bindMutation.isPending}
-          onAction={handleBind}
-          secondaryLabel={authenticated ? undefined : "还没有账号，去注册"}
-          onSecondary={authenticated ? undefined : goRegister}
-        />
+        {authenticated ? (
+          <EnrollmentOptionPicker
+            options={enrollmentOptions}
+            selectedEventId={selectedDisplayEventId}
+            loading={enrollmentOptionsQuery.isLoading}
+            saving={bindMutation.isPending}
+            actionLabel="绑定并展示这份报名表"
+            emptyText="当前账号还没有可展示的报名表，请先完成活动报名。"
+            onSelect={setSelectedDisplayEventId}
+            onSubmit={handleBind}
+          />
+        ) : (
+          <StatusPanel
+            icon={LinkIcon}
+            title="这是一只未绑定的手环"
+            description="登录或注册后即可把这只手环绑定到你的账号，并选择要展示的活动报名表。"
+            actionLabel="登录后绑定"
+            actionIcon={LogIn}
+            actionLoading={bindMutation.isPending}
+            onAction={handleBind}
+            secondaryLabel="还没有账号，去注册"
+            onSecondary={goRegister}
+          />
+        )}
       </PageShell>
     );
   }
@@ -547,6 +737,45 @@ const TokenNfcPage: FC<{ token: string }> = ({ token }) => {
         title={isSelf ? "我的手环名片" : "NFC 名片"}
         onBack={goBack}
       />
+      {isSelf && (
+        <div className="mx-4 pt-4">
+          <div className="rounded-2xl bg-white p-4 shadow-sm dark:bg-gray-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-gray-400">当前展示</p>
+                <p className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {data.tag.displayConfig?.eventTitle ||
+                    profile.nfcDisplay?.eventTitle ||
+                    "默认报名资料"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDisplayConfig(true)}
+                className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-full bg-primary-50 px-3 text-xs font-semibold text-primary-600 dark:bg-primary-900/25 dark:text-primary-300"
+              >
+                <Settings size={14} />
+                更换
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSelf && (
+        <EnrollmentOptionPicker
+          variant="drawer"
+          open={showDisplayConfig}
+          options={enrollmentOptions}
+          selectedEventId={selectedDisplayEventId}
+          loading={enrollmentOptionsQuery.isLoading}
+          saving={configMutation.isPending}
+          actionLabel="保存展示内容"
+          emptyText="当前账号还没有可切换的报名表。"
+          onSelect={setSelectedDisplayEventId}
+          onSubmit={() => configMutation.mutate()}
+          onClose={() => setShowDisplayConfig(false)}
+        />
+      )}
       <NfcProfileCard
         profile={profile}
         isSelf={isSelf}
