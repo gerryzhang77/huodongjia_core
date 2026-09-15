@@ -47,6 +47,7 @@ import {
   savePendingRedirectPath,
 } from "@/utils/redirect";
 import { getActivityCapacityPresentation } from "@/features/user/activity/utils/activityDetailPresentation";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 import dayjs from "dayjs";
 
 // 状态配置
@@ -278,11 +279,14 @@ const UserActivityDetail: FC = () => {
     activity.userStatus !== "rejected" &&
     activity.enrollment?.updateRequired === true;
   const registrationAvailability = getRegistrationAvailability(activity);
-  const displayedParticipantCount =
-    enrolledCount ?? activity.currentParticipants;
+  const displayedParticipantCount = getDisplayParticipantCount(
+    activity,
+    enrolledCount ?? activity.currentParticipants,
+  );
   const capacityPresentation = getActivityCapacityPresentation(
-    displayedParticipantCount,
+    activity.capacitySummary?.occupiedParticipants ?? activity.currentParticipants,
     activity.maxParticipants,
+    displayedParticipantCount,
   );
   const isFull = capacityPresentation.isFull;
   const displayLocation = isOnlineOnlyActivity(activity.tags)

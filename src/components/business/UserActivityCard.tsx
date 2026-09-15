@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { UserActivity, UserActivityStatus } from "@/mocks/data/user-activities";
 import { getTagLabel } from "@/features/activities/utils/constants";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 import dayjs from "dayjs";
 
 interface UserActivityCardProps {
@@ -95,8 +96,9 @@ const UserActivityCardInner: FC<UserActivityCardProps> = ({
 }) => {
   const config = statusConfig[activity.userStatus];
   const isFull = activity.currentParticipants >= activity.maxParticipants;
+  const displayParticipantCount = getDisplayParticipantCount(activity, activity.currentParticipants);
   const participationRate = Math.round(
-    (activity.currentParticipants / activity.maxParticipants) * 100
+    (displayParticipantCount / activity.maxParticipants) * 100
   );
 
   return (
@@ -143,7 +145,7 @@ const UserActivityCardInner: FC<UserActivityCardProps> = ({
                 isFull ? "text-orange-600" : "text-gray-700"
               }`}
             >
-              {activity.currentParticipants}/{activity.maxParticipants}
+              {displayParticipantCount}/{activity.maxParticipants}
             </span>
             {participationRate >= 80 && !isFull && (
               <TrendingUp className="w-3 h-3 text-orange-500" />

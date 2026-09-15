@@ -41,6 +41,7 @@ import {
   merchantQueryKeys,
 } from "@/features/merchant/queryKeys";
 import { cancelActivity as cancelOrganizerActivity } from "@/services/activityApi";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 
 type DetailTab = "info" | "participants";
 const PAGE_SIZE = 10;
@@ -249,11 +250,12 @@ const ActivityDetail = () => {
     activity.totalApplications ?? activity.enrolledCount ?? participantsTotal;
   const occupiedParticipants =
     activity.occupiedParticipants ?? activity.enrolledCount ?? 0;
+  const displayParticipantCount = getDisplayParticipantCount(activity, occupiedParticipants);
   const remainingParticipants = activity.capacity > 0
     ? activity.remainingParticipants ?? Math.max(0, activity.capacity - occupiedParticipants)
     : null;
   const participationRate = activity.capacity
-    ? Math.round((occupiedParticipants / activity.capacity) * 100)
+    ? Math.round((displayParticipantCount / activity.capacity) * 100)
     : 0;
   const requirements = parseRequirements(activity.requirements || "");
 
@@ -322,9 +324,9 @@ const ActivityDetail = () => {
               <div className="min-w-0 rounded-xl bg-emerald-50 p-3 text-center">
                 <p
                   className="break-all text-xl font-bold leading-tight tabular-nums text-emerald-600"
-                  title={activity.capacity > 0 ? `${occupiedParticipants}/${activity.capacity}` : String(occupiedParticipants)}
+                  title={activity.capacity > 0 ? `${displayParticipantCount}/${activity.capacity}` : String(displayParticipantCount)}
                 >
-                  {activity.capacity > 0 ? `${occupiedParticipants}/${activity.capacity}` : occupiedParticipants}
+                  {activity.capacity > 0 ? `${displayParticipantCount}/${activity.capacity}` : displayParticipantCount}
                 </p>
                 <p className="mt-1 truncate whitespace-nowrap text-xs text-gray-500">名额占用</p>
               </div>

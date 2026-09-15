@@ -22,4 +22,18 @@ describe("getActivityCapacityPresentation", () => {
       isFull: false,
     });
   });
+
+  it("preserves actual remaining capacity when the displayed count is adjusted", () => {
+    expect(getActivityCapacityPresentation(31, 50, 1)).toEqual({
+      label: "名额 1/50 · 剩余 19",
+      isFull: false,
+    });
+  });
+
+  it("still marks the event as full when the displayed count is below capacity", () => {
+    expect(getActivityCapacityPresentation(50, 50, 20)).toEqual({
+      label: "名额 20/50 · 已满",
+      isFull: true,
+    });
+  });
 });

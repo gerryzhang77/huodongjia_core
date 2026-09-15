@@ -14,6 +14,7 @@ import { MerchantLayout } from "@/components/layout";
 import { useActivityDetail } from "@/features/activities/hooks/useActivityDetail";
 import { EnrollmentManageTab } from "@/features/enrollment/components/EnrollmentManageTab";
 import { finishActivity } from "@/features/merchant/activity-manage/services/activityManageApi";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 
 /**
  * Tab 类型定义
@@ -141,7 +142,7 @@ export const ActivityManageNew: FC = () => {
                   📅 {new Date(activity.activityStart).toLocaleDateString()}
                 </span>
                 <span className="flex items-center gap-1">
-                  👥 {activity.enrolledCount}/{activity.capacity}
+                  👥 {getDisplayParticipantCount(activity, activity.enrolledCount)}/{activity.capacity}
                 </span>
               </div>
             </div>

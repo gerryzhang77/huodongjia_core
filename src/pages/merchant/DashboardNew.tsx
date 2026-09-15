@@ -38,6 +38,7 @@ import { useMerchantActivities } from "@/features/merchant/activity-manage/hooks
 import { useDeleteActivity } from "@/features/merchant/activity-manage/hooks/useDeleteActivity";
 import type { Activity } from "@/services/activityApi";
 import { usePrefetchMerchantActivity } from "@/hooks/usePrefetchMerchantActivity";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 
 /**
  * 统计卡片组件
@@ -159,11 +160,15 @@ const ActivityCard: FC<ActivityCardProps> = ({
     return `${month}月${day}日 ${hours}:${minutes}`;
   };
 
-  // 计算进度百分比
+  const displayParticipantCount = getDisplayParticipantCount(
+    activity,
+    activity.currentParticipants,
+  );
+  // 展示进度与展示人数保持一致，原始活动数据仍供统计和业务判断使用。
   const progress =
     activity.maxParticipants > 0
       ? Math.round(
-          (activity.currentParticipants / activity.maxParticipants) * 100,
+          (displayParticipantCount / activity.maxParticipants) * 100,
         )
       : 0;
 
@@ -284,7 +289,7 @@ const ActivityCard: FC<ActivityCardProps> = ({
           <div className="flex items-center justify-between text-sm mb-1">
             <span className="text-gray-500">报名进度</span>
             <span className="font-medium text-gray-900">
-              {activity.currentParticipants}/{activity.maxParticipants}
+              {displayParticipantCount}/{activity.maxParticipants}
             </span>
           </div>
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
