@@ -21,6 +21,7 @@ import { api } from "@/services/api";
 import { Toast } from "@/components/ui/Toast";
 import { isOnlineOnlyActivity } from "@/features/activities/utils/constants";
 import type { ActivityCardProps } from "./types";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 
 // 用户状态配置
 const userStatusConfig = {
@@ -71,6 +72,7 @@ const ActivityCardInner: FC<ActivityCardProps> = ({
   } = activity;
 
   const statusConfig = userStatusConfig[userStatus];
+  const displayParticipantCount = getDisplayParticipantCount(activity, currentParticipants);
   const displayLocation = isOnlineOnlyActivity(tags)
     ? "线上活动"
     : location || "地点待定";
@@ -219,7 +221,7 @@ const ActivityCardInner: FC<ActivityCardProps> = ({
           <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
             <Users size={14} className="flex-shrink-0" />
             <span>
-              {currentParticipants}/{maxParticipants} 人
+              {displayParticipantCount}/{maxParticipants} 人
             </span>
           </div>
         </div>

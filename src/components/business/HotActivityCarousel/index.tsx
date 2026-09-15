@@ -17,6 +17,7 @@ import { Flame, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import type { SwiperRef } from "antd-mobile";
 import type { HotActivityCarouselProps, HotActivitySlideProps } from "./types";
 import dayjs from "dayjs";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 
 /**
  * 格式化日期
@@ -35,6 +36,7 @@ const formatShortDate = (dateStr: string): string => {
  * 单个轮播卡片
  */
 const HotActivitySlide: FC<HotActivitySlideProps> = ({ activity, onClick }) => {
+  const displayParticipantCount = getDisplayParticipantCount(activity, activity.currentParticipants);
   const isAlmostFull =
     activity.currentParticipants / activity.maxParticipants >= 0.8;
 
@@ -76,7 +78,7 @@ const HotActivitySlide: FC<HotActivitySlideProps> = ({ activity, onClick }) => {
         <div className="flex items-center gap-1.5 px-2.5 py-1 lg:px-3 lg:py-1.5 bg-white/90 backdrop-blur-sm rounded-full shadow-sm">
           <Users size={12} className="text-gray-500 lg:w-3.5 lg:h-3.5" />
           <span className="text-[11px] lg:text-xs font-semibold text-gray-700">
-            {activity.currentParticipants}/{activity.maxParticipants}
+            {displayParticipantCount}/{activity.maxParticipants}
           </span>
         </div>
       </div>

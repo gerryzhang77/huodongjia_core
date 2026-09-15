@@ -17,6 +17,7 @@ import { Tag } from "@/components/ui";
 import dayjs from "dayjs";
 import { isOnlineOnlyActivity } from "@/features/activities/utils/constants";
 import type { ActivityListItemProps } from "./types";
+import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
 
 // 用户状态配置
 const userStatusConfig = {
@@ -67,6 +68,7 @@ const ActivityListItemInner: FC<ActivityListItemProps> = ({
   } = activity;
 
   const statusConfig = userStatusConfig[userStatus];
+  const displayParticipantCount = getDisplayParticipantCount(activity, currentParticipants);
   const isHot = currentParticipants / maxParticipants >= 0.8;
   const displayLocation = isOnlineOnlyActivity(tags)
     ? "线上活动"
@@ -226,7 +228,7 @@ const ActivityListItemInner: FC<ActivityListItemProps> = ({
             <span
               className={clsx("text-gray-400 dark:text-gray-500", sizes.info)}
             >
-              {currentParticipants}/{maxParticipants}人
+              {displayParticipantCount}/{maxParticipants}人
             </span>
           </div>
 
