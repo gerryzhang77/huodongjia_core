@@ -41,7 +41,7 @@ import {
   merchantQueryKeys,
 } from "@/features/merchant/queryKeys";
 import { cancelActivity as cancelOrganizerActivity } from "@/services/activityApi";
-import { getDisplayParticipantCount } from "@/utils/participantCountDisplay";
+import { getDisplayParticipantCount, getDisplayRemainingParticipants } from "@/utils/participantCountDisplay";
 
 type DetailTab = "info" | "participants";
 const PAGE_SIZE = 10;
@@ -252,7 +252,12 @@ const ActivityDetail = () => {
     activity.occupiedParticipants ?? activity.enrolledCount ?? 0;
   const displayParticipantCount = getDisplayParticipantCount(activity, occupiedParticipants);
   const remainingParticipants = activity.capacity > 0
-    ? activity.remainingParticipants ?? Math.max(0, activity.capacity - occupiedParticipants)
+    ? getDisplayRemainingParticipants(
+        activity,
+        occupiedParticipants,
+        activity.capacity,
+        activity.remainingParticipants ?? undefined,
+      )
     : null;
   const participationRate = activity.capacity
     ? Math.round((displayParticipantCount / activity.capacity) * 100)

@@ -36,6 +36,7 @@ import { getParticipantVisibleRegistrationFields } from "@/features/activities/u
 import { useAuthStore } from "@/features/auth/stores";
 import { getRegistrationAvailability } from "@/features/user/activity/utils/registrationAvailability";
 import { getActivityCapacityPresentation } from "@/features/user/activity/utils/activityDetailPresentation";
+import { getDisplayParticipantCount, getDisplayRemainingParticipants } from "@/utils/participantCountDisplay";
 import { useImageUpload, type UploadHandle } from "@/features/uploads";
 import {
   deletePendingEnrollmentImage,
@@ -1158,6 +1159,8 @@ const UserRegistration: FC = () => {
   const capacityPresentation = getActivityCapacityPresentation(
     activity.currentParticipants,
     activity.maxParticipants,
+    getDisplayParticipantCount(activity, activity.currentParticipants),
+    getDisplayRemainingParticipants(activity, activity.currentParticipants, activity.maxParticipants),
   );
 
   return (

@@ -26,3 +26,14 @@ export function getDisplayParticipantCount(
     originalCount;
   return Math.max(0, occupiedCount - hiddenCount);
 }
+
+/** 有限名额的剩余人数展示；只有临时配置的活动按展示报名人数扣减。 */
+export function getDisplayRemainingParticipants(
+  activity: ActivityParticipantCounts,
+  originalCount: number,
+  maxParticipants: number,
+  originalRemaining = Math.max(0, maxParticipants - originalCount),
+): number {
+  if (!HIDDEN_PARTICIPANT_COUNTS.has(activity.id)) return originalRemaining;
+  return Math.max(0, maxParticipants - getDisplayParticipantCount(activity, originalCount));
+}

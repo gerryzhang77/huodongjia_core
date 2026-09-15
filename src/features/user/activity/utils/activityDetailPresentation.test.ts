@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getActivityCapacityPresentation } from "./activityDetailPresentation";
+import { getDisplayParticipantCount, getDisplayRemainingParticipants } from "@/utils/participantCountDisplay";
 
 describe("getActivityCapacityPresentation", () => {
   it("formats a finite capacity as a compact quota label", () => {
@@ -34,6 +35,49 @@ describe("getActivityCapacityPresentation", () => {
     expect(getActivityCapacityPresentation(50, 50, 20)).toEqual({
       label: "名额 20/50 · 已满",
       isFull: true,
+    });
+  });
+});
+
+describe("temporary event capacity display", () => {
+  const eventId = "0052ba95-0a98-49b4-aa2b-1785f84c1aee";
+
+  it.each([
+    [30, 0, 50],
+    [31, 1, 49],
+    [32, 2, 48],
+    [20, 0, 50],
+    [50, 20, 30],
+    [80, 50, 0],
+  ])("shows %i actual attendees as %i with %i remaining", (actual, displayed, remaining) => {
+    const activity = Object.freeze({ id: eventId, currentParticipants: actual });
+    const displayedCount = getDisplayParticipantCount(activity, actual);
+    const displayedRemaining = getDisplayRemainingParticipants(activity, actual, 50);
+    expect(getActivityCapacityPresentation(actual, 50, displayedCount, displayedRemaining)).toEqual({
+      label: remaining === 0
+        ? `名额 ${displayed}/50 · 已满`
+        : `名额 ${displayed}/50 · 剩余 ${remaining}`,
+      isFull: actual >= 50,
+    });
+    expect(activity.currentParticipants).toBe(actual);
+  });
+
+  it("overrides the server's real remaining count only for the configured event", () => {
+    const target = { id: eventId, occupiedParticipants: 30 };
+    const other = { id: "another-event", occupiedParticipants: 30 };
+    expect(getDisplayRemainingParticipants(target, 30, 50, 20)).toBe(50);
+    expect(getDisplayRemainingParticipants(other, 30, 50, 20)).toBe(20);
+  });
+
+  it("uses occupied seats rather than cumulative applications for remaining capacity", () => {
+    const activity = { id: eventId, occupiedParticipants: 30 };
+    expect(getDisplayRemainingParticipants(activity, 31, 50, 20)).toBe(50);
+  });
+
+  it("keeps unlimited events unlimited even when display overrides are provided", () => {
+    expect(getActivityCapacityPresentation(30, 0, 0, 0)).toEqual({
+      label: "名额不限",
+      isFull: false,
     });
   });
 });
