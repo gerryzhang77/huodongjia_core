@@ -1,8 +1,6 @@
-// 临时展示规则：中秋公益敬老·青年交友活动隐藏原有 30 个占位名额。
-// 恢复真实人数时移除此配置；不得用于报名校验、统计或修改接口数据。
-const HIDDEN_PARTICIPANT_COUNTS = new Map<string, number>([
-  ["0052ba95-0a98-49b4-aa2b-1785f84c1aee", 30],
-]);
+// 当前没有活动启用临时人数偏移，统一展示原始报名人数和剩余名额。
+// 此配置只用于展示，不得用于报名校验、统计或修改接口数据。
+const HIDDEN_PARTICIPANT_COUNTS = new Map<string, number>();
 
 interface ActivityParticipantCounts {
   id: string;

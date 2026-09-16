@@ -39,16 +39,16 @@ describe("getActivityCapacityPresentation", () => {
   });
 });
 
-describe("temporary event capacity display", () => {
+describe("restored event capacity display", () => {
   const eventId = "0052ba95-0a98-49b4-aa2b-1785f84c1aee";
 
   it.each([
-    [30, 0, 50],
-    [31, 1, 49],
-    [32, 2, 48],
-    [20, 0, 50],
-    [50, 20, 30],
-    [80, 50, 0],
+    [30, 30, 20],
+    [31, 31, 19],
+    [32, 32, 18],
+    [20, 20, 30],
+    [50, 50, 0],
+    [80, 80, 0],
   ])("shows %i actual attendees as %i with %i remaining", (actual, displayed, remaining) => {
     const activity = Object.freeze({ id: eventId, currentParticipants: actual });
     const displayedCount = getDisplayParticipantCount(activity, actual);
@@ -62,16 +62,17 @@ describe("temporary event capacity display", () => {
     expect(activity.currentParticipants).toBe(actual);
   });
 
-  it("overrides the server's real remaining count only for the configured event", () => {
+  it("preserves the server's real remaining count for the restored event and other events", () => {
     const target = { id: eventId, occupiedParticipants: 30 };
     const other = { id: "another-event", occupiedParticipants: 30 };
-    expect(getDisplayRemainingParticipants(target, 30, 50, 20)).toBe(50);
+    expect(getDisplayRemainingParticipants(target, 30, 50, 20)).toBe(20);
     expect(getDisplayRemainingParticipants(other, 30, 50, 20)).toBe(20);
   });
 
-  it("uses occupied seats rather than cumulative applications for remaining capacity", () => {
+  it("preserves separate application totals and real remaining capacity", () => {
     const activity = { id: eventId, occupiedParticipants: 30 };
-    expect(getDisplayRemainingParticipants(activity, 31, 50, 20)).toBe(50);
+    expect(getDisplayParticipantCount(activity, 31)).toBe(31);
+    expect(getDisplayRemainingParticipants(activity, 31, 50, 20)).toBe(20);
   });
 
   it("keeps unlimited events unlimited even when display overrides are provided", () => {

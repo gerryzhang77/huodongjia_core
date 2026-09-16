@@ -45,14 +45,14 @@ describe.each(Object.entries(cards))("home attendance: %s", (_name, card) => {
     });
   };
 
-  it("hides the original attendees and updates when a new attendee joins", () => {
+  it("shows real attendance and updates when a new attendee joins", () => {
     const original = makeActivity(30);
     const view = renderCard(original);
-    expect(screen.getAllByText(/^0\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/^30\/50(?:\s*人)?$/)).toBeNull();
+    expect(screen.getAllByText(/^30\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^0\/50(?:\s*人)?$/)).toBeNull();
     const next = makeActivity(31);
     view.rerender(card(next));
-    expect(screen.getAllByText(/^1\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^31\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
     expect(original.currentParticipants).toBe(30);
     expect(next.currentParticipants).toBe(31);
   });
@@ -62,9 +62,9 @@ describe.each(Object.entries(cards))("home attendance: %s", (_name, card) => {
     expect(screen.getAllByText(/^30\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
   });
 
-  it("never displays a negative count when attendance drops below 30", () => {
+  it("shows real attendance when it drops below the former offset", () => {
     renderCard(makeActivity(20));
-    expect(screen.getAllByText(/^0\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/^20\/50(?:\s*人)?$/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/^-10\/50(?:\s*人)?$/)).toBeNull();
   });
 });
