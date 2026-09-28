@@ -64,6 +64,8 @@ export interface MerchantUser {
   firstParticipatedAt: string;
   /** 最近参与时间 */
   lastParticipatedAt: string;
+  /** 首次加入当前商家用户库的时间 */
+  memberSince?: string;
 
   // ---- 标签系统 ----
 

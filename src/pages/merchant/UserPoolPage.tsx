@@ -192,6 +192,7 @@ function normalizeMerchantUser(raw: unknown): MerchantUser | null {
     firstParticipatedAt:
       asString(item.firstParticipatedAt) || lastParticipatedAt,
     lastParticipatedAt,
+    memberSince: asString(item.memberSince) || undefined,
     autoTags: asStringArray(item.autoTags),
     customTags: asStringArray(item.customTags),
     activityLevel: normalizeActivityLevel(item.activityLevel),
@@ -528,14 +529,21 @@ const UserPoolPage: React.FC = () => {
   );
 
   // 统计数据
-  const stats = useMemo(() => ({
-    totalUsers: merchantUsers.length,
-    activeUsers: merchantUsers.filter((u: MerchantUser) => u.participationCount && u.participationCount > 1).length,
-    newUsersThisMonth: 0,
-    avgParticipation: merchantUsers.length > 0
-      ? (merchantUsers.reduce((s: number, u: MerchantUser) => s + (u.participationCount || 0), 0) / merchantUsers.length).toFixed(1)
-      : 0,
-  }), [merchantUsers]);
+  const stats = useMemo(() => {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    return {
+      totalUsers: merchantUsers.length,
+      activeUsers: merchantUsers.filter((u: MerchantUser) => u.participationCount > 1).length,
+      newUsersThisMonth: merchantUsers.filter(
+        (u: MerchantUser) => u.memberSince && new Date(u.memberSince) >= monthStart,
+      ).length,
+      avgParticipation: merchantUsers.length > 0
+        ? (merchantUsers.reduce((sum, u) => sum + u.participationCount, 0) / merchantUsers.length).toFixed(1)
+        : 0,
+    };
+  }, [merchantUsers]);
 
   // 活跃筛选数
   const activeFilterCount = useMemo(
@@ -905,6 +913,12 @@ const UserPoolPage: React.FC = () => {
           platformUserCount={platformUsers.length}
         />
 
+        {activeTab === "my-users" && (
+          <p className="text-xs text-gray-500 px-1">
+            活动结束后，审核通过的报名用户会自动加入，仅当前商家可见。
+          </p>
+        )}
+
         {/* ============================================ */}
         {/* 「我的用户」视图 */}
         {/* ============================================ */}
@@ -1130,7 +1144,7 @@ const UserPoolPage: React.FC = () => {
                       ? "没有匹配的用户，试试调整筛选条件"
                       : selectedActivityId
                         ? "该活动暂无报名用户"
-                        : "暂无用户数据"}
+                        : "活动结束后，审核通过的用户会自动加入这里"}
                   </p>
                   {(searchKeyword || activeFilterCount > 0) && (
                     <button
