@@ -150,6 +150,11 @@ const UserMatchDetail: FC = () => {
         </div>
 
         <div className="px-4 py-4 space-y-4">
+          {detail.explanation.supplementary && (
+            <p className="rounded-xl bg-white p-4 text-sm text-gray-500">
+              补充推荐：你们暂无可比较的资料，可以先认识一下。
+            </p>
+          )}
           {detail.explanation.fields.length > 0 ? (
             <section className="space-y-3">
               <div className="flex items-center gap-2">

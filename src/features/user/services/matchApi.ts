@@ -34,6 +34,7 @@ export interface MatchExplanationField {
 }
 
 export interface MatchExplanationPayload {
+  supplementary?: boolean;
   fields: MatchExplanationField[];
 }
 
@@ -69,11 +70,13 @@ export const normalizeMatchExplanation = (
 
   if (typeof rawExplanation !== "object") return { fields: [] };
   const payload = rawExplanation as {
+    supplementary?: boolean;
     fields?: Array<Partial<MatchExplanationField>>;
   };
   if (!Array.isArray(payload.fields)) return { fields: [] };
 
   return {
+    ...(payload.supplementary === true ? { supplementary: true } : {}),
     fields: payload.fields
       .filter(
         (field) =>

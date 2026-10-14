@@ -41,6 +41,7 @@ export interface CandidateMatchView {
   candidate?: ResultParticipant;
   rank: number;
   scorePercent: number | null;
+  supplementary?: boolean;
   scoreFields: Array<Record<string, unknown>>;
   reciprocalRank: number | null;
 }
@@ -83,11 +84,12 @@ export const sortParticipantResultRows = (
 
 export const toScorePercent = (
   score?: {
-    total_score?: number;
-    total_score_percent?: number;
+    total_score?: number | null;
+    total_score_percent?: number | null;
+    supplementary?: boolean;
   } | null,
 ): number | null => {
-  if (!score) return null;
+  if (!score || score.supplementary || score.total_score === null) return null;
 
   const percent = Number(score.total_score_percent);
   if (Number.isFinite(percent)) {
@@ -138,6 +140,7 @@ export const buildParticipantResultRows = ({
           rank: index + 1,
           scorePercent: toScorePercent(record?.scores?.[index] || null),
           scoreFields: record?.scores?.[index]?.fields || [],
+          supplementary: record?.scores?.[index]?.supplementary === true,
           reciprocalRank: reverseIndex >= 0 ? reverseIndex + 1 : null,
         };
       },

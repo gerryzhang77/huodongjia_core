@@ -140,6 +140,7 @@ export interface MatchPreflightResult {
   }>;
   insufficientParticipants?: number;
   message: string;
+  warnings?: string[];
 }
 
 export type MatchCountMode = "fixed" | "range" | "max";
@@ -159,6 +160,8 @@ export interface MatchConstraints {
   maxMatches: number;
   hardRules: MatchHardRule[];
   allowManualOverride: boolean;
+  /** 仅本次匹配生效，保存到运行快照。 */
+  allowSupplementaryRecommendations?: boolean;
   minGroupSize?: number;
   maxGroupSize?: number;
   genderRatioMin?: number; // 性别比例最小值 (%)
@@ -219,8 +222,9 @@ export interface ParticipantMatchResult {
   bestMatchUserIds: string[];
   /** 每个候选对象对应的总分与分项分数，顺序与 bestMatchUserIds 对齐 */
   scores?: Array<{
-    total_score: number;
-    total_score_percent?: number;
+    total_score: number | null;
+    total_score_percent?: number | null;
+    supplementary?: boolean;
     fields?: Array<Record<string, unknown>>;
   } | null> | null;
   /** 记录创建时间 */

@@ -99,6 +99,7 @@ const RuleEditorDrawer: React.FC<RuleEditorDrawerProps> = ({
         registrationTypeId,
         groupName: "不可用的当前字段",
         canMatch: false,
+        unavailable: true,
       });
     };
 
@@ -156,7 +157,7 @@ const RuleEditorDrawer: React.FC<RuleEditorDrawerProps> = ({
     draft.target_registration_type_id,
   );
   const invalidSelection =
-    sourceOption?.canMatch === false || targetOption?.canMatch === false;
+    sourceOption?.unavailable === true || targetOption?.unavailable === true;
   const incomplete =
     !draft.source_field || !draft.target_field || !draft.operator;
   const duplicateKey = getRuleDuplicateKey(draft);
@@ -263,14 +264,14 @@ const RuleEditorDrawer: React.FC<RuleEditorDrawerProps> = ({
             const availabilityText = identitySourceIssueText
               ? `（${identitySourceIssueText}）`
               : option.canMatch === false
-                ? "（数据不足）"
+                ? "（资料不足时跳过）"
                 : "";
             return (
               <option
                 key={optionValue}
                 value={optionValue}
                 disabled={
-                  option.canMatch === false && !selectedValues.has(optionValue)
+                  option.unavailable === true && !selectedValues.has(optionValue)
                 }
               >
                 {option.label}
@@ -455,7 +456,7 @@ const RuleEditorDrawer: React.FC<RuleEditorDrawerProps> = ({
             <div>
               <h4 className="text-sm font-semibold text-gray-900">重要程度</h4>
               <p className="mt-1 text-xs text-gray-500">
-                预计占当前启用规则影响的 {influence}%
+                配置权重约 {influence}%，实际按双方可用资料计算
               </p>
             </div>
             <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-600">

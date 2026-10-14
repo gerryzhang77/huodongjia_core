@@ -28,6 +28,15 @@ const makeRule = (
 });
 
 describe("matching rule validation", () => {
+  it("allows optional-field coverage warnings, including cached legacy invalid flags", () => {
+    const sparse = makeRule("optional", {
+      valid: false,
+      invalid_reason: "INSUFFICIENT_COVERAGE",
+      can_match: false,
+    });
+    expect(hasInvalidEnabledRules([sparse])).toBe(false);
+    expect(getRuleInvalidMessage(sparse)).toContain("自动跳过");
+  });
   it("marks both enabled copies of the same directional rule", () => {
     const rules = [
       makeRule("one"),

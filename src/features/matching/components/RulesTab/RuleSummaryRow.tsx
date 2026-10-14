@@ -50,7 +50,12 @@ export function RuleSummaryRow({
   const dataUnavailable =
     rule.enabled &&
     !invalid &&
-    (sourceOption?.canMatch === false || targetOption?.canMatch === false);
+    (rule.invalid_reason === "INSUFFICIENT_COVERAGE" ||
+      [sourceOption, targetOption].some((option) =>
+        option?.canMatch === false ||
+        (typeof option?.coverage === "number" && typeof option.totalEligibleParticipants === "number" &&
+          option.coverage < option.totalEligibleParticipants),
+      ));
 
   return (
     <div
@@ -73,7 +78,7 @@ export function RuleSummaryRow({
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
             <span>{operator.shortLabel}</span>
-            {rule.enabled && <span>影响约 {influence}%</span>}
+            {rule.enabled && <span>配置权重 {influence}%</span>}
             {incomplete && (
               <span className="font-medium text-orange-600">待补全</span>
             )}
@@ -88,7 +93,7 @@ export function RuleSummaryRow({
               </span>
             )}
             {dataUnavailable && (
-              <span className="font-medium text-orange-600">字段数据不足</span>
+              <span className="text-gray-500">部分资料缺失，按已有资料匹配</span>
             )}
           </span>
         </span>

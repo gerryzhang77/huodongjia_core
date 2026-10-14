@@ -328,6 +328,9 @@ const RecommendationParticipantItem = memo(
                 <p className="truncate text-xs font-semibold text-gray-800">
                   {participantName}
                 </p>
+                {match.supplementary && (
+                  <span className="shrink-0 text-[10px] text-gray-500">补充推荐</span>
+                )}
                 {match.reciprocalRank != null && (
                   <span
                     className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
@@ -359,6 +362,9 @@ const RecommendationParticipantItem = memo(
                 <p className="truncate text-sm font-semibold text-gray-900">
                   {participantName}
                 </p>
+                {match.supplementary && (
+                  <span className="shrink-0 text-[10px] text-gray-500">补充推荐</span>
+                )}
                 {match.reciprocalRank != null && (
                   <span
                     className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"

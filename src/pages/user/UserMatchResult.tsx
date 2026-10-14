@@ -44,6 +44,7 @@ interface TopMatchUser {
   name: string;
   avatar: string;
   matchHighlights: MatchExplanationField[];
+  supplementary?: boolean;
 }
 
 const MatchUniverseCard: FC<{
@@ -136,6 +137,7 @@ const MatchUniverseCard: FC<{
               <div className="truncate text-[18px] font-semibold text-gray-900">
                 {user.name}
               </div>
+              {user.supplementary && <p className="mt-1 text-xs text-gray-500">补充推荐</p>}
             </div>
           </div>
         </div>
@@ -287,6 +289,7 @@ const UserMatchResult: FC = () => {
         name: user.name,
         avatar: user.avatar || generateDefaultAvatar(user.user_id),
         matchHighlights: user.matchHighlights.slice(0, 3),
+        supplementary: user.supplementary,
       };
     });
   }, [bestMatchesData]);
