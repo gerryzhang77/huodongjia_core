@@ -6,6 +6,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Toast } from "@/components/ui/Toast";
 import { participantsApi } from "../services";
+import { merchantQueryKeys } from "@/features/merchant/queryKeys";
 import type {
   CreateParticipantsRequest,
   CreateParticipantsResponse,
@@ -48,8 +49,7 @@ export const useCreateParticipants = (eventId: string) => {
       queryClient.invalidateQueries({
         queryKey: ["enrollments", eventId],
       });
-
-      console.log("导入成功，已刷新报名列表缓存");
+      void queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingRoot(eventId) });
     },
     onError: (error) => {
       console.error("导入失败:", error);

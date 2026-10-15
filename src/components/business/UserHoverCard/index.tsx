@@ -235,6 +235,10 @@ export const UserHoverCard: FC<UserHoverCardProps> = ({
 
   // 查看详情
   const handleViewProfile = useCallback(() => {
+    if (showTimeoutRef.current) {
+      clearTimeout(showTimeoutRef.current);
+      showTimeoutRef.current = null;
+    }
     setIsVisible(false);
     if (onViewProfile) {
       onViewProfile(user.id);
@@ -267,7 +271,9 @@ export const UserHoverCard: FC<UserHoverCardProps> = ({
   useEffect(() => {
     if (!isVisible) return;
 
-    const handleScrollOrResize = () => {
+    const handleScrollOrResize = (event: Event) => {
+      // The card itself is scrollable. Keep its actions reachable on small screens.
+      if (event.target instanceof Node && cardRef.current?.contains(event.target)) return;
       setIsVisible(false);
     };
 
@@ -384,12 +390,18 @@ export const UserHoverCard: FC<UserHoverCardProps> = ({
             onMouseLeave={hideCard}
             onFocusCapture={handleCardMouseEnter}
             onBlurCapture={handleCardBlur}
-            onClickCapture={(event) => {
+            onClick={(event) => {
+              // Let the target action run before closing the portal.
+              event.stopPropagation();
               const target = event.target;
               if (
                 target instanceof Element &&
                 target.closest("button, a")
               ) {
+                if (showTimeoutRef.current) {
+                  clearTimeout(showTimeoutRef.current);
+                  showTimeoutRef.current = null;
+                }
                 setIsVisible(false);
               }
             }}

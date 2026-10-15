@@ -554,7 +554,7 @@ export const getMatchGroups = async (
 }> => {
   const token = getToken();
 
-  const resultsResp = await fetch(`/api/match/${activityId}/results`, {
+  const resultsResp = await fetch(`/api/match/${activityId}/results?view=summary`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",

@@ -86,6 +86,7 @@ interface ResultsTabProps {
   constraints: MatchConstraints;
   onResultsChanged: () => Promise<void> | void;
   readOnly?: boolean;
+  actionsDisabled?: boolean;
   resultState?: MatchResultState;
   resultVersion?: number;
   matchStatusId?: string;
@@ -421,6 +422,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   constraints,
   onResultsChanged,
   readOnly = false,
+  actionsDisabled = false,
   resultState,
   resultVersion,
   matchStatusId,
@@ -781,6 +783,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
               <Button
                 size="small"
                 onClick={() => void handlePrimaryAction()}
+                disabled={actionsDisabled}
                 loading={
                   resultState === "published"
                     ? isCreatingAdjustmentDraft
@@ -990,7 +993,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                     )}
 
                     <div className="flex flex-wrap items-center justify-end gap-2 lg:col-start-3">
-                      {!readOnly && !currentHistoryId && row.owner && (
+                      {!readOnly && !actionsDisabled && !currentHistoryId && row.owner && (
                         <button
                           type="button"
                           onClick={() => setEditingOwnerId(row.ownerId)}

@@ -72,8 +72,6 @@ export const mapApiActivityToActivity = (
   apiActivity: ApiActivityData
 ): Activity => {
   try {
-    console.log("mapApiActivityToActivity - 开始转换:", apiActivity);
-
     const createdAt = apiActivity.createdAt || apiActivity.created_at || "";
     const updatedAt = apiActivity.updatedAt || apiActivity.updated_at || "";
     const activityStart = apiActivity.activityStart || apiActivity.start_time || "";
@@ -129,11 +127,9 @@ export const mapApiActivityToActivity = (
       registrationTypes: apiActivity.registrationTypes || [],
     };
 
-    console.log("mapApiActivityToActivity - ✅ 转换成功:", result);
     return result;
   } catch (error) {
-    console.error("mapApiActivityToActivity - ❌ 转换失败:", error);
-    console.error("mapApiActivityToActivity - 原始数据:", apiActivity);
+    console.error("活动数据转换失败", error instanceof Error ? error.message : "未知错误");
     throw error;
   }
 };

@@ -333,6 +333,7 @@ const ActivityCard: FC<ActivityCardProps> = ({
                 onMatch();
               }}
               onPointerEnter={onMatchPreload}
+              onTouchStart={onMatchPreload}
               onFocus={onMatchPreload}
             >
               <CheckCircle size={14} />
@@ -346,6 +347,7 @@ const ActivityCard: FC<ActivityCardProps> = ({
                 onMatch();
               }}
               onPointerEnter={onMatchPreload}
+              onTouchStart={onMatchPreload}
               onFocus={onMatchPreload}
             >
               智能匹配

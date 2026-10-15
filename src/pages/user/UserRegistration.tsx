@@ -4,6 +4,7 @@
  * 若活动无自定义 schema，则使用默认表单
  */
 
+import { getRegistrationErrors } from "@/features/user/enrollment/utils/registrationValidation";
 import { FC, useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -185,7 +186,7 @@ type EnrollmentImageItem = {
   previewUrl?: string;
   name: string;
   file?: File;
-  status: "uploading" | "pending" | "attached" | "error";
+  status: "processing" | "uploading" | "pending" | "attached" | "error";
   uploadHandle?: UploadHandle;
   ownsPreviewUrl?: boolean;
 };
@@ -265,7 +266,7 @@ const EnrollmentImageField: FC<{
         .map((item) => item.assetId!),
       items.filter((item) => item.status === "pending" || item.status === "attached").length,
     );
-    onUploadingChange(field.key, items.some((item) => item.status === "uploading"));
+    onUploadingChange(field.key, items.some((item) => item.status === "processing" || item.status === "uploading"));
   }, [field.key, items, onChange, onUploadingChange]);
 
   useEffect(() => {
@@ -324,9 +325,11 @@ const EnrollmentImageField: FC<{
     }
 
     selected.forEach((file) => {
-      const uploadHandle = uploadWithPreview(file);
-      if (!uploadHandle.tempUrl) return;
       const localId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const uploadHandle = uploadWithPreview(file, () => {
+        if (mountedRef.current) setItems(current => current.map(item => item.localId === localId ? { ...item, status: "uploading" } : item));
+      });
+      if (!uploadHandle.tempUrl) return;
       setItems((current) => [
         ...current,
         {
@@ -334,7 +337,7 @@ const EnrollmentImageField: FC<{
           previewUrl: uploadHandle.tempUrl,
           name: file.name,
           file,
-          status: "uploading",
+          status: "processing",
           uploadHandle,
         },
       ]);
@@ -368,7 +371,9 @@ const EnrollmentImageField: FC<{
 
   const retryItem = (item: EnrollmentImageItem) => {
     if (item.status !== "error" || !item.file) return;
-    const uploadHandle = uploadWithPreview(item.file);
+    const uploadHandle = uploadWithPreview(item.file, () => {
+      if (mountedRef.current) setItems(current => current.map(candidate => candidate.localId === item.localId ? { ...candidate, status: "uploading" } : candidate));
+    });
     if (!uploadHandle.tempUrl) return;
 
     item.uploadHandle?.releasePreview();
@@ -378,7 +383,7 @@ const EnrollmentImageField: FC<{
           ? {
               ...candidate,
               previewUrl: uploadHandle.tempUrl,
-              status: "uploading",
+              status: "processing",
               uploadHandle,
             }
           : candidate,
@@ -415,7 +420,7 @@ const EnrollmentImageField: FC<{
   };
 
   const removeItem = async (item: EnrollmentImageItem) => {
-    if (item.status === "uploading") return;
+    if (item.status === "processing" || item.status === "uploading") return;
     if (item.status === "error" || !item.assetId) {
       item.uploadHandle?.releasePreview();
       setItems((current) => current.filter((candidate) => candidate.localId !== item.localId));
@@ -448,10 +453,10 @@ const EnrollmentImageField: FC<{
                   <LoaderCircle size={20} className="animate-spin" />
                 </div>
               )}
-              {item.status === "uploading" ? (
+              {item.status === "processing" || item.status === "uploading" ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/45 text-xs text-white">
                   <LoaderCircle size={20} className="animate-spin" />
-                  上传中
+                  {item.status === "processing" ? "正在处理图片" : "上传中"}
                 </div>
               ) : item.status === "error" ? (
                 <button
@@ -462,9 +467,9 @@ const EnrollmentImageField: FC<{
                 >
                   上传失败 · 重试
                 </button>
-              ) : item.status === "attached" ? (
+              ) : item.status === "attached" || item.status === "pending" ? (
                 <span className="absolute bottom-1.5 left-1.5 rounded-full bg-black/55 px-2 py-0.5 text-[10px] text-white">
-                  已提交
+                  {item.status === "attached" ? "已提交" : "已上传"}
                 </span>
               ) : null}
               {(item.status === "pending" || item.status === "error") && (
@@ -482,6 +487,12 @@ const EnrollmentImageField: FC<{
         </div>
       )}
 
+      {items.length > 0 && (
+        <p role="status" className="text-xs text-gray-600 dark:text-gray-400">
+          已完成 {items.filter(item => item.status === "pending" || item.status === "attached").length} 张
+          {items.some(item => item.status === "error") && "；有图片上传失败，请点击照片重试或删除后重新选择"}
+        </p>
+      )}
       {items.length < maxImages && (
         <label className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-gray-500 transition-colors hover:border-primary-300 hover:text-primary-500 dark:border-gray-700 dark:bg-gray-800">
           <ImagePlus size={24} />
@@ -728,6 +739,14 @@ const UserRegistration: FC = () => {
   const [uploadingImageFields, setUploadingImageFields] = useState<Set<string>>(new Set());
   const [confirmedFieldKeys, setConfirmedFieldKeys] = useState<Set<string>>(new Set());
   const [phoneVerificationTarget, setPhoneVerificationTarget] = useState<string | null>(null);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const submissionInFlight = useRef(false);
+  const focusField = (key: string) => {
+    const element = document.getElementById(`registration-field-${key}`);
+    element?.scrollIntoView({ behavior: "smooth", block: "center" });
+    element?.querySelector<HTMLElement>("input:not([type=file]), textarea, select, button")?.focus({ preventScroll: true });
+  };
   // 防止 prefill 多次覆盖用户已修改值
   const hasAppliedPrefill = useRef(false);
   const hasAppliedEnrollment = useRef(false);
@@ -749,6 +768,8 @@ const UserRegistration: FC = () => {
     setImageCounts({});
     setConfirmedFieldKeys(new Set());
     setPhoneVerificationTarget(null);
+    setSubmitAttempted(false);
+    setSubmitError("");
     touchedFieldKeys.current.clear();
   }, [id, registrationTypeId, user?.id]);
 
@@ -815,10 +836,11 @@ const UserRegistration: FC = () => {
         return merged;
       });
     }
-    hasAppliedPrefill.current = true;
+    hasAppliedPrefill.current = Boolean(prefillData);
   }, [formSchema, isParticipantUser, prefillData, verifiedPhone]);
 
   const setField = useCallback((key: string, value: string | string[]) => {
+    setSubmitError("");
     touchedFieldKeys.current.add(key);
     setFormData((prev) => ({ ...prev, [key]: value }));
     setConfirmedFieldKeys((previous) => new Set(previous).add(key));
@@ -833,28 +855,10 @@ const UserRegistration: FC = () => {
     [editContext],
   );
 
-  const fieldValidationErrors = useMemo(() => {
-    const errors = new Map<string, string>();
-    for (const field of formSchema) {
-      if (field.type === "image") continue;
-      const error = getIdentityCardFieldError(field, formData[field.key]);
-      if (error) errors.set(field.key, error);
-    }
-    return errors;
-  }, [formData, formSchema]);
-
-  const blockedQuotaSelection = useMemo(() => {
-    for (const field of formSchema) {
-      if (!["radio", "select"].includes(field.type)) continue;
-      const value = formData[field.key];
-      if (typeof value !== "string" || !value) continue;
-      const availability = field.optionAvailability?.[value];
-      if (availability?.isFull && availability.canKeepExisting !== true) {
-        return { field, value };
-      }
-    }
-    return null;
-  }, [formData, formSchema]);
+  const fieldValidationErrors = useMemo(
+    () => getRegistrationErrors(formSchema, formData, imageCounts),
+    [formData, formSchema, imageCounts],
+  );
 
   const setImageField = useCallback((key: string, ids: string[], totalCount: number) => {
     setImageAnswers((previous) => ({ ...previous, [key]: ids }));
@@ -873,26 +877,10 @@ const UserRegistration: FC = () => {
     });
   }, []);
 
-  // 校验必填字段
-  const isFormValid = useMemo(() => {
-    if (fieldValidationErrors.size > 0) return false;
-    if (blockedQuotaSelection) return false;
-    return formSchema.every((field) => {
-      if (field.key === "phone") {
-        const phone = formData[field.key];
-        return typeof phone === "string" && PHONE_PATTERN.test(phone);
-      }
-      if (!field.required) return true;
-      if (field.type === "image") {
-        return (imageCounts[field.key] || 0) > 0;
-      }
-      const val = formData[field.key];
-      if (Array.isArray(val)) return val.length > 0;
-      return typeof val === "string" && val.trim().length > 0;
-    });
-  }, [blockedQuotaSelection, fieldValidationErrors, formSchema, formData, imageCounts]);
-
   const handleSubmit = async () => {
+    if (submissionInFlight.current) return;
+    setSubmitAttempted(true);
+    setSubmitError("");
     if (isReadOnly) {
       Toast.show({
         icon: "fail",
@@ -907,6 +895,13 @@ const UserRegistration: FC = () => {
       });
       return;
     }
+    if (fieldValidationErrors.size > 0) {
+      const [key, message] = fieldValidationErrors.entries().next().value!;
+      focusField(key);
+      Toast.show({ icon: "fail", content: message });
+      return;
+    }
+
     const submittedPhone = String(formData.phone || "").replace(/\D/g, "");
     if (submittedPhone !== verifiedPhone) {
       setPhoneVerificationTarget(submittedPhone);
@@ -917,34 +912,6 @@ const UserRegistration: FC = () => {
       Toast.show({
         icon: "fail",
         content: registrationAvailability.reason || "当前暂不可报名",
-      });
-      return;
-    }
-
-    if (!isFormValid) {
-      if (blockedQuotaSelection) {
-        Toast.show({
-          icon: "fail",
-          content: `“${blockedQuotaSelection.value}”名额已满，请选择其他选项`,
-        });
-        return;
-      }
-      const firstValidationError = fieldValidationErrors.values().next().value;
-      // 找到第一个未填的必填字段
-      const missing = formSchema.find((f) => {
-        if (!f.required) return false;
-        if (f.type === "image") {
-          return (imageCounts[f.key] || 0) === 0;
-        }
-        const val = formData[f.key];
-        if (Array.isArray(val)) return val.length === 0;
-        return !val || (typeof val === "string" && !val.trim());
-      });
-      Toast.show({
-        icon: "fail",
-        content:
-          firstValidationError ||
-          (missing ? `请填写「${missing.label}」` : "请填写所有必填项"),
       });
       return;
     }
@@ -966,6 +933,7 @@ const UserRegistration: FC = () => {
       }
     }
 
+    submissionInFlight.current = true;
     try {
       if (isEditMode) {
         await updateEnrollmentMutation.mutateAsync({
@@ -1038,11 +1006,11 @@ const UserRegistration: FC = () => {
       }
       navigateToDetail();
     } catch (error: unknown) {
-      Toast.show({
-        icon: "fail",
-        content: getSubmitErrorMessage(error),
-        duration: 3000,
-      });
+      const message = getSubmitErrorMessage(error);
+      setSubmitError(message);
+      Toast.show({ icon: "fail", content: message, duration: 3000 });
+    } finally {
+      submissionInFlight.current = false;
     }
   };
 
@@ -1234,10 +1202,13 @@ const UserRegistration: FC = () => {
                 const fieldState = fieldStateByKey.get(field.key);
                 const needsAttention = fieldState && fieldState.state !== "complete";
                 const isConfirmed = confirmedFieldKeys.has(field.key);
-                const fieldValidationError = fieldValidationErrors.get(field.key);
+                const fieldValidationError = submitAttempted
+                  ? fieldValidationErrors.get(field.key)
+                  : getIdentityCardFieldError(field, formData[field.key]) || undefined;
                 return (
                 <div
                   key={field.key}
+                  id={`registration-field-${field.key}`}
                   className={(needsAttention && !isConfirmed) || fieldValidationError
                     ? "rounded-xl border border-error-300 bg-error-50/60 p-3 dark:border-error-800 dark:bg-error-900/10"
                     : undefined}
@@ -1301,9 +1272,18 @@ const UserRegistration: FC = () => {
             {/* 底部操作栏 - 报名页隐藏 TabBar，专注表单 */}
             <div className="fixed bottom-0 left-0 right-0 z-40 safe-area-bottom">
               <div className="max-w-lg md:max-w-2xl lg:max-w-3xl mx-auto bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 px-4 pt-3 pb-3 md:px-6 md:pb-4 shadow-[0_-2px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_-2px_12px_rgba(0,0,0,0.3)]">
+                {submitError ? (
+                  <p role="alert" className="mb-2 text-sm text-error-600">{submitError}，填写内容已保留，可检查后重试。</p>
+                ) : submitAttempted && fieldValidationErrors.size > 0 ? (
+                  <button type="button" className="mb-2 text-left text-sm text-error-600" onClick={() => focusField(fieldValidationErrors.keys().next().value!)}>
+                    还有 {fieldValidationErrors.size} 项需要处理，点击查看第一项
+                  </button>
+                ) : uploadingImageFields.size > 0 ? (
+                  <p role="status" className="mb-2 text-sm text-gray-600">照片正在处理或上传，完成后即可提交；失败后可重试或删除。</p>
+                ) : null}
                 <Button
                   onClick={handleSubmit}
-                  disabled={isReadOnly || !isFormValid || uploadingImageFields.size > 0}
+                  disabled={isReadOnly || uploadingImageFields.size > 0}
                   loading={isSubmitting || updateEnrollmentMutation.isPending || uploadingImageFields.size > 0}
                   className="w-full h-12 text-base"
                 >

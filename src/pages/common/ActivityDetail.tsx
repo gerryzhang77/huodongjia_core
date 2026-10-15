@@ -1,3 +1,4 @@
+import { usePrefetchMerchantActivity } from "@/hooks/usePrefetchMerchantActivity";
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -70,13 +71,14 @@ const STATUS_CONFIG: Record<
 
 const preloadEnrollmentRoute = () =>
   import("@/pages/merchant/EnrollmentManagementNew");
-const preloadMatchingRoute = () => import("@/pages/merchant/MatchingConfig");
+
 const preloadEditRoute = () => import("@/pages/merchant/ActivityEditNew");
 
 const ActivityDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { prefetchMatching } = usePrefetchMerchantActivity();
   const [searchParams, setSearchParams] = useSearchParams();
   const { activity, loading, error } = useActivityDetail(id);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -368,7 +370,7 @@ const ActivityDetail = () => {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button type="button" onPointerEnter={() => void preloadEditRoute()} onFocus={() => void preloadEditRoute()} onClick={() => navigate(`/dashboard/activity/${id}/edit`)} className="flex min-w-0 flex-nowrap items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-50 px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"><Edit3 size={17} className="shrink-0 text-primary-500" />编辑活动</button>
             <button type="button" onPointerEnter={prefetchEnrollmentData} onFocus={prefetchEnrollmentData} onClick={() => navigate(`/dashboard/activity/${id}/enrollment`, { state: { returnTo: `/dashboard/activity/${id}/detail` } })} className="flex min-w-0 flex-nowrap items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-50 px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"><Users size={17} className="shrink-0 text-emerald-500" />报名管理</button>
-            <button type="button" onPointerEnter={() => void preloadMatchingRoute()} onFocus={() => void preloadMatchingRoute()} onClick={() => navigate(`/dashboard/activity/${id}/matching`, { state: { returnTo: `/dashboard/activity/${id}/detail` } })} className="flex min-w-0 flex-nowrap items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-50 px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"><Settings size={17} className="shrink-0 text-orange-500" />匹配配置</button>
+            <button type="button" onPointerEnter={() => id && prefetchMatching(id)} onFocus={() => id && prefetchMatching(id)} onTouchStart={() => id && prefetchMatching(id)} onClick={() => navigate(`/dashboard/activity/${id}/matching`, { state: { returnTo: `/dashboard/activity/${id}/detail` } })} className="flex min-w-0 flex-nowrap items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-50 px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"><Settings size={17} className="shrink-0 text-orange-500" />匹配配置</button>
             <button type="button" onClick={() => setShowQrModal(true)} className="flex min-w-0 flex-nowrap items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-gray-50 px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"><QrCode size={17} className="shrink-0 text-purple-500" />活动二维码</button>
           </div>
         </section>

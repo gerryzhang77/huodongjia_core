@@ -2,14 +2,7 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getActivityById } from "@/features/activities/services";
 import { getEnrollmentsDetailed } from "@/features/enrollment/services/enrollmentApi";
-import {
-  getMatchConfig,
-  getMatchFieldCatalog,
-  getMatchGroups,
-  getMatchingHistory,
-  getMatchRules,
-  getParticipants,
-} from "@/features/matching/services/matchingApi";
+import { matchingQueries } from "@/features/matching/services/matchingQueries";
 import {
   merchantCacheTimes,
   merchantQueryKeys,
@@ -54,43 +47,11 @@ export function usePrefetchMerchantActivity() {
   const prefetchMatching = useCallback(
     (activityId: string) => {
       void preloadMatchingChunk();
-      const common = { gcTime: merchantCacheTimes.matchingGc };
-      void queryClient.prefetchQuery({
-        queryKey: merchantQueryKeys.matchingRules(activityId),
-        queryFn: () => getMatchRules(activityId),
-        staleTime: merchantCacheTimes.matchingRulesStale,
-        ...common,
-      });
-      void queryClient.prefetchQuery({
-        queryKey: merchantQueryKeys.matchingParticipants(activityId),
-        queryFn: () => getParticipants(activityId),
-        staleTime: merchantCacheTimes.matchingParticipantsStale,
-        ...common,
-      });
-      void queryClient.prefetchQuery({
-        queryKey: merchantQueryKeys.matchingCatalog(activityId),
-        queryFn: () => getMatchFieldCatalog(activityId),
-        staleTime: 5 * 60 * 1000,
-        ...common,
-      });
-      void queryClient.prefetchQuery({
-        queryKey: merchantQueryKeys.matchingConfig(activityId),
-        queryFn: () => getMatchConfig(activityId),
-        staleTime: merchantCacheTimes.matchingRulesStale,
-        ...common,
-      });
-      void queryClient.prefetchQuery({
-        queryKey: merchantQueryKeys.matchingHistory(activityId),
-        queryFn: () => getMatchingHistory(activityId),
-        staleTime: 60 * 1000,
-        ...common,
-      });
-      void queryClient.prefetchQuery({
-        queryKey: merchantQueryKeys.matchingResults(activityId),
-        queryFn: () => getMatchGroups(activityId),
-        staleTime: merchantCacheTimes.matchingResultStale,
-        ...common,
-      });
+      // Prefetch only the shared entry data. Scoped catalogs load on the rules step.
+      void queryClient.prefetchQuery(matchingQueries.participants(activityId));
+      void queryClient.prefetchQuery(matchingQueries.results(activityId));
+      void queryClient.prefetchQuery(matchingQueries.config(activityId));
+      void queryClient.prefetchQuery(matchingQueries.activity(activityId));
     },
     [queryClient],
   );

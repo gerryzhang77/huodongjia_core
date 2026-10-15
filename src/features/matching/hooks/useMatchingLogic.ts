@@ -11,21 +11,17 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toast } from "@/components/ui/Toast";
-import { getActivityById } from "@/features/activities/services/api";
+import { matchingQueries } from "../services/matchingQueries";
 import type { Activity } from "@/features/activities/types";
 
 // API 服务函数
 import {
-  getMatchRules,
   saveMatchRules,
   getMatchGroups,
-  getParticipants,
   getMatchingHistory,
   submitMatchingTask,
   getMatchingTaskStatus,
-  getMatchFieldCatalog,
   preflightMatching,
-  getMatchConfig,
   saveMatchConfig,
   publishMatchingResult,
   createMatchAdjustmentDraft,
@@ -49,7 +45,6 @@ import type {
   MatchValidationResult,
 } from "../types";
 import {
-  merchantCacheTimes,
   merchantQueryKeys,
 } from "@/features/merchant/queryKeys";
 
@@ -91,6 +86,7 @@ export interface MatchingStats {
 }
 
 const DEFAULT_SCHEMA_GROUP_ID = '__default__';
+const EMPTY_PARTICIPANTS: Participant[] = [];
 
 // 本地 GroupMember 类型 (兼容多种格式)
 export interface LocalGroupMember {
@@ -104,6 +100,7 @@ export interface LocalGroupMember {
 interface UseMatchingLogicOptions {
   activityId: string;
   fieldCatalogEnabled?: boolean;
+  step?: "participants" | "rules" | "preview" | "execute" | "results";
 }
 
 const DEFAULT_OPERATOR = "similarity" as const;
@@ -184,64 +181,31 @@ const flattenRegistrationSchemaGroups = (
 export function useMatchingLogic({
   activityId,
   fieldCatalogEnabled = true,
+  step = "rules",
 }: UseMatchingLogicOptions) {
   const FOREGROUND_POLL_INTERVAL_MS = 3000;
   const BACKGROUND_POLL_INTERVAL_MS = 5000;
   const queryClient = useQueryClient();
   const queryEnabled = Boolean(activityId);
 
-  const rulesQuery = useQuery({
-    queryKey: merchantQueryKeys.matchingRules(activityId),
-    queryFn: () => getMatchRules(activityId),
-    enabled: queryEnabled,
-    staleTime: merchantCacheTimes.matchingRulesStale,
-    gcTime: merchantCacheTimes.matchingGc,
-  });
-  const participantsQuery = useQuery({
-    queryKey: merchantQueryKeys.matchingParticipants(activityId),
-    queryFn: () => getParticipants(activityId),
-    enabled: queryEnabled,
-    staleTime: merchantCacheTimes.matchingParticipantsStale,
-    gcTime: merchantCacheTimes.matchingGc,
-    refetchOnMount: "always",
-  });
-  const historyQuery = useQuery({
-    queryKey: merchantQueryKeys.matchingHistory(activityId),
-    queryFn: () => getMatchingHistory(activityId),
-    enabled: queryEnabled,
-    staleTime: 60 * 1000,
-    gcTime: merchantCacheTimes.matchingGc,
-  });
-  const activityQuery = useQuery({
-    queryKey: merchantQueryKeys.activity(activityId),
-    queryFn: () => getActivityById(activityId),
-    enabled: queryEnabled,
-    staleTime: merchantCacheTimes.activityStale,
-    gcTime: merchantCacheTimes.activityGc,
-  });
-  const configQuery = useQuery({
-    queryKey: merchantQueryKeys.matchingConfig(activityId),
-    queryFn: () => getMatchConfig(activityId),
-    enabled: queryEnabled,
-    staleTime: merchantCacheTimes.matchingRulesStale,
-    gcTime: merchantCacheTimes.matchingGc,
-  });
-  const resultsQuery = useQuery({
-    queryKey: merchantQueryKeys.matchingResults(activityId),
-    queryFn: () => getMatchGroups(activityId),
-    enabled: queryEnabled,
-    staleTime: merchantCacheTimes.matchingResultStale,
-    gcTime: merchantCacheTimes.matchingGc,
-    retry: 1,
-  });
+  const resultsQuery = useQuery({ ...matchingQueries.results(activityId), enabled: queryEnabled });
+  const participantsQuery = useQuery({ ...matchingQueries.participants(activityId), enabled: queryEnabled });
+  const configQuery = useQuery({ ...matchingQueries.config(activityId), enabled: queryEnabled });
+  const needsRules = step === "rules" || step === "preview" || step === "execute";
+  const rulesQuery = useQuery({ ...matchingQueries.rules(activityId), enabled: queryEnabled && needsRules });
+  const historyQuery = useQuery({ ...matchingQueries.history(activityId), enabled: queryEnabled && step === "results" && resultsQuery.isSuccess });
+  const activityQuery = useQuery({ ...matchingQueries.activity(activityId), enabled: queryEnabled && (step !== "results" || resultsQuery.isSuccess) });
+  const rulesDirty = useRef(false);
+  const constraintsDirty = useRef(false);
+  const editVersions = useRef({ rules: 0, constraints: 0 });
 
   // === 状态定义 ===
   const [stage, setStage] = useState<MatchingStage>("idle");
   const [activeTab, setActiveTab] = useState<TabKey>("rules");
 
   // 规则相关
-  const [rules, setRules] = useState<MatchRule[]>([]);
-  const [constraints, setConstraints] = useState<MatchConstraints>({
+  const [rules, setRulesState] = useState<MatchRule[]>([]);
+  const [constraints, setConstraintsState] = useState<MatchConstraints>({
     countMode: "range",
     minMatches: 1,
     maxMatches: 3,
@@ -249,8 +213,23 @@ export function useMatchingLogic({
     allowManualOverride: false,
   });
 
+  const setRules = useCallback((value: React.SetStateAction<MatchRule[]>) => {
+    rulesDirty.current = true;
+    editVersions.current.rules += 1;
+    setRulesState(value);
+  }, []);
+  const setConstraints = useCallback((value: React.SetStateAction<MatchConstraints>) => {
+    constraintsDirty.current = true;
+    editVersions.current.constraints += 1;
+    setConstraintsState(value);
+  }, []);
+  useEffect(() => {
+    rulesDirty.current = false;
+    constraintsDirty.current = false;
+  }, [activityId]);
+
   // 数据
-  const [participants, setParticipants] = useState<Participant[]>([]);
+  const participants = (participantsQuery.data || EMPTY_PARTICIPANTS) as Participant[];
   const [excludedParticipantIds, setExcludedParticipantIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -322,33 +301,24 @@ export function useMatchingLogic({
     [selectedParticipantIds],
   );
   const eligibleParticipantCount = selectedParticipantIds.length;
-  const catalogParticipantScope = `selected:${selectedParticipantFingerprint || "none"}`;
   const catalogQuery = useQuery({
-    queryKey: merchantQueryKeys.matchingCatalog(
-      activityId,
-      catalogParticipantScope,
-    ),
-    queryFn: () => getMatchFieldCatalog(activityId, selectedParticipantIds),
-    enabled:
-      queryEnabled && fieldCatalogEnabled && participantsQuery.isFetched,
-    staleTime: 0,
-    gcTime: merchantCacheTimes.matchingGc,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: "always",
-    refetchInterval: fieldCatalogEnabled ? 30 * 1000 : false,
+    ...matchingQueries.catalog(activityId, selectedParticipantIds),
+    enabled: queryEnabled && fieldCatalogEnabled && participantsQuery.isSuccess,
+    refetchInterval: fieldCatalogEnabled ? 30_000 : false,
     refetchIntervalInBackground: false,
   });
 
-  // 加载状态
-  const isLoading = [
-    rulesQuery,
-    participantsQuery,
-    historyQuery,
-    activityQuery,
-    configQuery,
-    resultsQuery,
-  ].some((query) => query.isPending) ||
-    (fieldCatalogEnabled && catalogQuery.isPending);
+  // Only data needed for this step gates the page. History is non-blocking.
+  const requiredQueries = step === "results"
+    ? [participantsQuery, resultsQuery, configQuery]
+    : step === "participants"
+      ? [participantsQuery, resultsQuery]
+      : [participantsQuery, rulesQuery, configQuery, activityQuery,
+          ...(fieldCatalogEnabled ? [catalogQuery] : [])];
+  const isLoading = queryEnabled && requiredQueries.some((query) => query.isPending);
+  const loadError = requiredQueries.find((query) => query.isError && !query.data)?.error;
+  const refreshError = [...requiredQueries, historyQuery].find((query) => query.isError && query.data)?.error;
+  const isRevalidating = requiredQueries.some((query) => query.isFetching);
 
   const clearTaskPolling = useCallback(() => {
     if (taskPollingRef.current) {
@@ -362,19 +332,16 @@ export function useMatchingLogic({
 
   // React Query 负责跨路由缓存；本地状态只承载尚未保存的编辑值和执行进度。
   useEffect(() => {
-    if (!rulesQuery.isFetched) return;
+    if (!rulesQuery.isSuccess || rulesDirty.current) return;
     const rulesData = rulesQuery.data || [];
-    setRules(
+    setRulesState(
       rulesData.length > 0
         ? rulesData.map((rule, index) => normalizeRuleForUi(rule, index))
         : [createEmptyRule()],
     );
-  }, [rulesQuery.data, rulesQuery.isFetched]);
+  }, [rulesQuery.data, rulesQuery.isSuccess]);
 
-  useEffect(() => {
-    if (!participantsQuery.isFetched) return;
-    setParticipants((participantsQuery.data || []) as Participant[]);
-  }, [participantsQuery.data, participantsQuery.isFetched]);
+
 
   useEffect(() => {
     setExcludedParticipantIds(new Set());
@@ -391,9 +358,9 @@ export function useMatchingLogic({
   }, [participants]);
 
   useEffect(() => {
-    if (!historyQuery.isFetched) return;
+    if (!historyQuery.isSuccess) return;
     setHistory((historyQuery.data || []) as MatchingHistory[]);
-  }, [historyQuery.data, historyQuery.isFetched]);
+  }, [historyQuery.data, historyQuery.isSuccess]);
 
   useEffect(() => {
     const schemaGroups = buildRegistrationSchemaGroups(activityQuery.data);
@@ -427,11 +394,11 @@ export function useMatchingLogic({
   }, [selectedParticipantFingerprint]);
 
   useEffect(() => {
-    if (configQuery.data) setConstraints(configQuery.data);
+    if (configQuery.data && !constraintsDirty.current) setConstraintsState(configQuery.data);
   }, [configQuery.data]);
 
   useEffect(() => {
-    if (!resultsQuery.isFetched) return;
+    if (!resultsQuery.isSuccess) return;
     const matchData = resultsQuery.data;
     const nextResults = matchData?.results || [];
     setMatchResults(nextResults);
@@ -460,13 +427,14 @@ export function useMatchingLogic({
   }, [
     participantsQuery.data,
     resultsQuery.data,
-    resultsQuery.isFetched,
+    resultsQuery.isSuccess,
   ]);
 
   // === 保存所有规则配置到后端 ===
   const handleSaveRules = useCallback(
     async (configName: string) => {
       try {
+        const savedVersions = { ...editVersions.current };
         const normalizedRules = rules.map((rule, index) =>
           normalizeRuleForUi(rule, index),
         );
@@ -490,7 +458,13 @@ export function useMatchingLogic({
           savedAt: new Date().toISOString(),
         };
         setSavedConfigs((prev) => [newConfig, ...prev]);
-        setRules(normalizedRules);
+        if (editVersions.current.rules === savedVersions.rules) {
+          rulesDirty.current = false;
+          setRulesState(normalizedRules);
+        }
+        if (editVersions.current.constraints === savedVersions.constraints) {
+          constraintsDirty.current = false;
+        }
         Toast.show({ content: `配置"${configName}"已保存`, icon: "success" });
       } catch (error) {
         console.error("Failed to save rules:", error);
@@ -538,54 +512,21 @@ export function useMatchingLogic({
           clearTaskPolling();
           currentTaskIdRef.current = null;
 
-          // 重新加载数据（per-user top5 + 历史）
-          const [matchData, historyData] = await Promise.all([
-            getMatchGroups(activityId).catch(() => ({
-              results: [] as ParticipantMatchResult[],
-              stats: null,
-              resultState: undefined,
-              participantUserIds: [] as string[],
-            })),
-            getMatchingHistory(activityId).catch(() => [] as MatchingHistory[]),
+          // Failed reads retain the last good result instead of caching an empty success.
+          setIsMatching(false);
+          setIsRulesLocked(false);
+          const [resultRefresh] = await Promise.allSettled([
+            queryClient.fetchQuery({ ...matchingQueries.results(activityId), staleTime: 0 }),
+            queryClient.fetchQuery({ ...matchingQueries.history(activityId), staleTime: 0 }),
           ]);
-
-          if (matchData.results.length > 0) {
-            setMatchResults(matchData.results);
-            setStage("completed");
-            setActiveTab("results");
-            if (matchData.stats) {
-              setMatchingStats({
-                avgScore: matchData.stats.averageScore,
-                minScore: matchData.stats.minScore,
-                maxScore: matchData.stats.maxScore,
-                totalGroups: matchData.results.length,
-                totalParticipants:
-                  matchData.stats.totalParticipants ||
-                  participants.length,
-              });
-            } else {
-              setMatchingStats(null);
-            }
-          }
-
-          if (historyData) {
-            setHistory(historyData);
-          }
-          queryClient.setQueryData(
-            merchantQueryKeys.matchingResults(activityId),
-            matchData,
-          );
-          queryClient.setQueryData(
-            merchantQueryKeys.matchingHistory(activityId),
-            historyData,
-          );
           void queryClient.invalidateQueries({
             queryKey: merchantQueryKeys.activities(),
           });
 
-          setIsMatching(false);
-          setIsRulesLocked(false);
-          Toast.show({ content: "匹配完成", icon: "success" });
+          Toast.show({
+            content: resultRefresh.status === "fulfilled" ? "匹配完成" : "匹配已完成，结果加载失败，请刷新重试",
+            icon: resultRefresh.status === "fulfilled" ? "success" : "fail",
+          });
         } else if (status.status === "failed") {
           // 任务失败
           clearTaskPolling();
@@ -608,7 +549,6 @@ export function useMatchingLogic({
       activityId,
       clearTaskPolling,
       isBackgroundMatching,
-      participants.length,
       queryClient,
     ],
   );
@@ -837,12 +777,7 @@ export function useMatchingLogic({
             : "结果发布成功",
           icon: "success",
         });
-        const historyData = await getMatchingHistory(activityId).catch(() => []);
-        setHistory(historyData);
-        queryClient.setQueryData(
-          merchantQueryKeys.matchingHistory(activityId),
-          historyData,
-        );
+        void queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingHistory(activityId) });
         void queryClient.invalidateQueries({
           queryKey: merchantQueryKeys.activities(),
         });
@@ -966,59 +901,18 @@ export function useMatchingLogic({
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const [participantsData, historyData, catalogData, matchData] = await Promise.all([
-        getParticipants(activityId).catch(() => []),
-        getMatchingHistory(activityId).catch(() => []),
-        getMatchFieldCatalog(activityId, selectedParticipantIds).catch(() => ({
-          fields: [] as MatchFieldCatalogItem[],
-          totalEligibleParticipants: 0,
-        })),
-        getMatchGroups(activityId).catch(() => ({
-          results: [] as ParticipantMatchResult[],
-          stats: null,
-          resultState: undefined,
-          participantUserIds: [] as string[],
-        })),
-      ]);
-
-      setParticipants(participantsData as Participant[]);
-      setHistory(historyData);
-      setFieldCatalog(catalogData.fields);
-      setMatchResults(matchData.results);
-      if (matchData.results.length > 0) {
-        setStage(matchData.resultState === "published" ? "published" : "completed");
-      }
-      if (matchData.stats) {
-        setMatchingStats({
-          avgScore: matchData.stats.averageScore,
-          minScore: matchData.stats.minScore,
-          maxScore: matchData.stats.maxScore,
-          totalGroups: matchData.results.length,
-          totalParticipants: matchData.stats.totalParticipants,
-        });
-      } else {
-        setMatchingStats(null);
-      }
-
-      queryClient.setQueryData(
-        merchantQueryKeys.matchingParticipants(activityId),
-        participantsData,
-      );
-      queryClient.setQueryData(
-        merchantQueryKeys.matchingHistory(activityId),
-        historyData,
-      );
-      queryClient.setQueryData(
-        merchantQueryKeys.matchingCatalog(
-          activityId,
-          catalogParticipantScope,
-        ),
-        catalogData,
-      );
-      queryClient.setQueryData(
-        merchantQueryKeys.matchingResults(activityId),
-        matchData,
-      );
+      // Query failures retain existing data. Never replace a failed read with [].
+      const queries = [
+        matchingQueries.participants(activityId), matchingQueries.results(activityId),
+        matchingQueries.config(activityId), matchingQueries.activity(activityId),
+        ...(needsRules ? [matchingQueries.rules(activityId)] : []),
+        ...(step === "results" ? [matchingQueries.history(activityId)] : []),
+        ...(fieldCatalogEnabled ? [matchingQueries.catalog(activityId, selectedParticipantIds)] : []),
+      ];
+      await Promise.all(queries.map(async (options) => {
+        await queryClient.invalidateQueries({ queryKey: options.queryKey, exact: true, refetchType: "none" });
+        await queryClient.fetchQuery({ ...options, staleTime: 0 } as Parameters<typeof queryClient.fetchQuery>[0]);
+      }));
 
       Toast.show({ content: "数据已刷新", icon: "success" });
     } catch (error) {
@@ -1029,7 +923,9 @@ export function useMatchingLogic({
     }
   }, [
     activityId,
-    catalogParticipantScope,
+    fieldCatalogEnabled,
+    needsRules,
+    step,
     queryClient,
     selectedParticipantIds,
   ]);
@@ -1040,6 +936,9 @@ export function useMatchingLogic({
     stage,
     activeTab,
     isLoading,
+    loadError,
+    refreshError,
+    isRevalidating,
     isMatching,
     isPublishing,
     isCreatingAdjustmentDraft,
