@@ -11,6 +11,7 @@ export interface RuleFieldOption {
   coverage?: number;
   totalEligibleParticipants?: number;
   canMatch?: boolean;
+  unavailable?: boolean;
   source?: string;
   sourceFilledCount?: number;
   invalidSourceCount?: number;
@@ -149,7 +150,8 @@ export const isRuleIncomplete = (rule: MatchingRule) =>
 export const hasIncompleteEnabledRules = (rules: MatchingRule[]) =>
   rules.some(isRuleIncomplete);
 
-export const isRuleInvalid = (rule: MatchingRule) => rule.valid === false;
+export const isRuleInvalid = (rule: MatchingRule) =>
+  rule.valid === false && rule.invalid_reason !== "INSUFFICIENT_COVERAGE";
 
 export const hasInvalidEnabledRules = (rules: MatchingRule[]) =>
   rules.some((rule) => rule.enabled && isRuleInvalid(rule));
@@ -165,7 +167,7 @@ export const getRuleInvalidMessage = (rule: MatchingRule) => {
     case "REGISTRATION_TYPE_UNAVAILABLE":
       return "所属报名类型已停用或不参与匹配，请重新选择字段";
     case "INSUFFICIENT_COVERAGE":
-      return "当前参与人的字段数据不足，请更换字段或参与人";
+      return "资料不足时自动跳过，不影响其他偏好匹配";
     default:
       return rule.valid === false ? "匹配字段已不可用，请重新选择" : "";
   }

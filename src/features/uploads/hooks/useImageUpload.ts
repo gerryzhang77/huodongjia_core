@@ -24,6 +24,7 @@
  * - kind 决定调用哪个上传 API；新增类型只改 dispatch
  */
 
+import { withTimeout } from "../utils/withTimeout";
 import { useCallback } from "react";
 import { Toast } from "@/components/ui/Toast";
 import { uploadCoverImage } from "@/features/activities/services/activityApi";
@@ -135,8 +136,10 @@ function canvasToBlob(
   quality: number,
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("图片处理超时，请重试或换一张图片")), 15_000);
     canvas.toBlob(
       (blob) => {
+        clearTimeout(timer);
         if (blob) {
           resolve(blob);
         } else {
@@ -157,7 +160,7 @@ async function loadImageSource(file: File): Promise<{
 }> {
   if ("createImageBitmap" in window) {
     try {
-      const bitmap = await createImageBitmap(file);
+      const bitmap = await withTimeout(createImageBitmap(file), 10_000, "图片读取超时", bitmap => bitmap.close());
       return {
         source: bitmap,
         width: bitmap.width,
@@ -173,7 +176,15 @@ async function loadImageSource(file: File): Promise<{
   const url = URL.createObjectURL(file);
   return new Promise((resolve, reject) => {
     const img = new Image();
+    const timer = setTimeout(() => {
+      img.onload = null;
+      img.onerror = null;
+      img.src = "";
+      URL.revokeObjectURL(url);
+      reject(new Error("图片读取超时，请重试或换一张图片"));
+    }, 10_000);
     img.onload = () => {
+      clearTimeout(timer);
       resolve({
         source: img,
         width: img.naturalWidth,
@@ -182,6 +193,7 @@ async function loadImageSource(file: File): Promise<{
       });
     };
     img.onerror = () => {
+      clearTimeout(timer);
       URL.revokeObjectURL(url);
       reject(new Error("图片读取失败"));
     };
@@ -328,7 +340,7 @@ export function useImageUpload(opts: Options) {
   } = opts;
 
   const uploadWithPreview = useCallback(
-    (file: File): UploadHandle => {
+    (file: File, onPhaseChange?: (phase: "uploading") => void): UploadHandle => {
       // 1) 前置校验
       if (!isAllowedImageFile(file, allowedMimeTypes, allowedExtensions)) {
         if (showToastOnError) {
@@ -360,8 +372,15 @@ export function useImageUpload(opts: Options) {
       };
 
       // 3) 异步压缩并上传，settle 时统一 revoke
-      const finalUrlPromise = optimizeImageForUpload(file, { maxDimension, uploadMaxBytes })
-        .then((uploadFile) => upload ? upload(uploadFile) : dispatchUpload(kind, uploadFile))
+      const finalUrlPromise = withTimeout(
+        optimizeImageForUpload(file, { maxDimension, uploadMaxBytes }),
+        30_000,
+        "图片处理超时，请重试或换一张图片",
+      )
+        .then((uploadFile) => {
+          onPhaseChange?.("uploading");
+          return upload ? upload(uploadFile) : dispatchUpload(kind, uploadFile);
+        })
         .then((realUrl) => {
           if (revokePreviewOnSettled) releasePreview();
           return realUrl;

@@ -27,6 +27,7 @@ export const useEditActivity = (activityId: string) => {
     queryClient.invalidateQueries({ queryKey: merchantQueryKeys.activity(id), ...options });
     queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingCatalog(id), ...options });
     queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingParticipants(id), ...options });
+    queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingResults(id), ...options });
     queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingRules(id), ...options });
     queryClient.invalidateQueries({ queryKey: ["public", "activity", id], ...options });
     queryClient.invalidateQueries({ queryKey: ["user", "activity", id], ...options });

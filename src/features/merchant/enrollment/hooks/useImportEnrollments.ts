@@ -27,6 +27,7 @@ export function useImportEnrollments(activityId: string) {
       queryClient.invalidateQueries({
         queryKey: merchantQueryKeys.matchingParticipants(activityId),
       });
+      queryClient.invalidateQueries({ queryKey: merchantQueryKeys.matchingResults(activityId) });
       queryClient.invalidateQueries({
         queryKey: merchantQueryKeys.matchingCatalog(activityId),
       });

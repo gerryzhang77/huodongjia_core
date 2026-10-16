@@ -24,8 +24,9 @@ import { api } from "@/services/api";
 type MatchRule = MatchingRule;
 
 type MatchCandidateScore = {
-  total_score: number;
-  total_score_percent?: number;
+  total_score: number | null;
+  total_score_percent?: number | null;
+  supplementary?: boolean;
   fields?: Array<Record<string, unknown>>;
 };
 
@@ -188,14 +189,16 @@ const parseMatchCandidateScores = (
         return null;
       }
 
+      const supplementary = (item as MatchCandidateScore).supplementary === true;
       const totalScore = Number((item as MatchCandidateScore).total_score);
       const totalScorePercent = Number(
         (item as MatchCandidateScore).total_score_percent,
       );
 
       return {
-        total_score: Number.isFinite(totalScore) ? totalScore : 0,
-        total_score_percent: Number.isFinite(totalScorePercent)
+        supplementary,
+        total_score: supplementary ? null : Number.isFinite(totalScore) ? totalScore : 0,
+        total_score_percent: supplementary ? null : Number.isFinite(totalScorePercent)
           ? totalScorePercent
           : Math.round((Number.isFinite(totalScore) ? totalScore : 0) * 100),
         fields: Array.isArray((item as MatchCandidateScore).fields)
@@ -551,7 +554,7 @@ export const getMatchGroups = async (
 }> => {
   const token = getToken();
 
-  const resultsResp = await fetch(`/api/match/${activityId}/results`, {
+  const resultsResp = await fetch(`/api/match/${activityId}/results?view=summary`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",

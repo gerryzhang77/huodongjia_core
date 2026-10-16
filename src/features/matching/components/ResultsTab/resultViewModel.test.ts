@@ -74,6 +74,10 @@ describe("buildParticipantResultRows", () => {
 });
 
 describe("toScorePercent", () => {
+  it("keeps supplementary recommendations unscored instead of showing zero percent", () => {
+    expect(toScorePercent({ total_score: null, supplementary: true })).toBeNull();
+    expect(toScorePercent({ total_score: 0 })).toBe(0);
+  });
   it("normalizes fractional scores and clamps invalid ranges", () => {
     expect(toScorePercent({ total_score: 0.5 })).toBe(50);
     expect(toScorePercent({ total_score: 0, total_score_percent: 130 })).toBe(100);

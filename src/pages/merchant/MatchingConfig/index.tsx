@@ -82,10 +82,14 @@ const MatchingConfigPage: React.FC = () => {
   const matching = useMatchingLogic({
     activityId: activityId || "",
     fieldCatalogEnabled: wizardStep === "rules",
+    step: wizardStep,
   });
   const {
     stage,
     isLoading,
+    loadError,
+    refreshError,
+    isRevalidating,
     isMatching,
     isPublishing,
     isCreatingAdjustmentDraft,
@@ -262,12 +266,24 @@ const MatchingConfigPage: React.FC = () => {
     }
   };
 
+  if (loadError) {
+    return (
+      <MerchantLayout title="智能匹配" showBack onBack={handleBack}>
+        <div role="alert" className="flex flex-col items-center gap-4 py-20">
+          <AlertCircle className="text-red-400" size={36} />
+          <p>{loadError instanceof Error ? loadError.message : "匹配数据加载失败"}</p>
+          <Button onClick={() => void handleRefresh()}>重新加载</Button>
+        </div>
+      </MerchantLayout>
+    );
+  }
+
   if (isLoading) {
     return (
       <MerchantLayout title="智能匹配" showBack onBack={handleBack}>
         <div className="flex flex-col items-center justify-center py-20">
           <Loader2 size={40} className="mb-4 animate-spin text-primary-400" />
-          <p className="text-gray-500">正在加载匹配配置...</p>
+          <p className="text-gray-500">{wizardStep === "results" ? "正在加载匹配结果..." : "正在加载匹配数据..."}</p>
         </div>
       </MerchantLayout>
     );
@@ -295,6 +311,14 @@ const MatchingConfigPage: React.FC = () => {
       />
 
       <div className="mx-auto max-w-6xl space-y-5 px-1 py-3 md:px-5 md:py-6">
+        {refreshError ? (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
+            <span>最新数据读取失败，当前显示上次加载的内容。请刷新后再操作。</span>
+            <Button size="small" onClick={() => void handleRefresh()}>重试</Button>
+          </div>
+        ) : isRevalidating && !isMatching ? (
+          <p role="status" className="text-sm text-gray-500">正在核对最新数据...</p>
+        ) : null}
         {wizardStep !== "results" && (
           <nav aria-label="匹配配置步骤">
             <ol className="flex min-w-0 items-center rounded-2xl border border-gray-100 bg-white p-2 shadow-sm md:min-w-[650px]">
@@ -522,7 +546,7 @@ const MatchingConfigPage: React.FC = () => {
             <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900">执行前预览与校验</h2>
               <p className="mt-1 text-sm text-gray-500">
-                校验字段覆盖率、人数上下限和硬规则，校验通过后才允许执行。
+                按已有资料匹配，选填项缺失会自动跳过；校验推荐人数和限制条件。
               </p>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl bg-gray-50 p-4">
@@ -552,6 +576,11 @@ const MatchingConfigPage: React.FC = () => {
                     {lastPreflightResult.canExecute ? "校验通过" : "校验未通过"}
                   </p>
                   <p className="mt-1 text-sm text-gray-600">{lastPreflightResult.message}</p>
+                  {!!lastPreflightResult.warnings?.length && (
+                    <ul className="mt-3 space-y-1 text-xs text-gray-600">
+                      {lastPreflightResult.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                    </ul>
+                  )}
                   {!lastPreflightResult.canExecute && (
                     <ul className="mt-3 space-y-1 text-xs text-red-700">
                       {lastPreflightResult.ruleDiagnostics
@@ -650,6 +679,7 @@ const MatchingConfigPage: React.FC = () => {
             constraints={constraints}
             onResultsChanged={handleRefresh}
             readOnly={effectiveResultState === "published"}
+            actionsDisabled={isRevalidating || Boolean(refreshError)}
             resultState={effectiveResultState}
             resultVersion={resultVersion}
             matchStatusId={matchStatusId}

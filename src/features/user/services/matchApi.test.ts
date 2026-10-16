@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { normalizeMatchExplanation } from "./matchApi";
 
 describe("normalizeMatchExplanation", () => {
+  it("preserves the supplementary label without inventing explanation fields", () => {
+    expect(normalizeMatchExplanation({ supplementary: true, fields: [] }))
+      .toEqual({ supplementary: true, fields: [] });
+  });
   it("keeps qualitative fields while dropping legacy score metadata", () => {
     const explanation = normalizeMatchExplanation({
       total_score: 0.87,

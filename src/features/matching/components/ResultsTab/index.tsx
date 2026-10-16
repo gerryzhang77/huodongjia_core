@@ -86,6 +86,7 @@ interface ResultsTabProps {
   constraints: MatchConstraints;
   onResultsChanged: () => Promise<void> | void;
   readOnly?: boolean;
+  actionsDisabled?: boolean;
   resultState?: MatchResultState;
   resultVersion?: number;
   matchStatusId?: string;
@@ -328,6 +329,9 @@ const RecommendationParticipantItem = memo(
                 <p className="truncate text-xs font-semibold text-gray-800">
                   {participantName}
                 </p>
+                {match.supplementary && (
+                  <span className="shrink-0 text-[10px] text-gray-500">补充推荐</span>
+                )}
                 {match.reciprocalRank != null && (
                   <span
                     className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
@@ -359,6 +363,9 @@ const RecommendationParticipantItem = memo(
                 <p className="truncate text-sm font-semibold text-gray-900">
                   {participantName}
                 </p>
+                {match.supplementary && (
+                  <span className="shrink-0 text-[10px] text-gray-500">补充推荐</span>
+                )}
                 {match.reciprocalRank != null && (
                   <span
                     className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
@@ -415,6 +422,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   constraints,
   onResultsChanged,
   readOnly = false,
+  actionsDisabled = false,
   resultState,
   resultVersion,
   matchStatusId,
@@ -775,6 +783,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
               <Button
                 size="small"
                 onClick={() => void handlePrimaryAction()}
+                disabled={actionsDisabled}
                 loading={
                   resultState === "published"
                     ? isCreatingAdjustmentDraft
@@ -984,7 +993,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                     )}
 
                     <div className="flex flex-wrap items-center justify-end gap-2 lg:col-start-3">
-                      {!readOnly && !currentHistoryId && row.owner && (
+                      {!readOnly && !actionsDisabled && !currentHistoryId && row.owner && (
                         <button
                           type="button"
                           onClick={() => setEditingOwnerId(row.ownerId)}

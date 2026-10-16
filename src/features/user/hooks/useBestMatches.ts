@@ -33,6 +33,7 @@ export interface Participant {
 
 export interface EnrichedBestMatchUser extends Participant {
   matchHighlights: MatchExplanationField[];
+  supplementary?: boolean;
 }
 
 export async function fetchBestMatchesWithParticipants(
@@ -65,6 +66,7 @@ export async function fetchBestMatchesWithParticipants(
         name: enrollment.name || "未知用户",
         avatar: enrollment.avatar || undefined,
         matchHighlights: explanation.fields,
+        supplementary: explanation.supplementary === true,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);

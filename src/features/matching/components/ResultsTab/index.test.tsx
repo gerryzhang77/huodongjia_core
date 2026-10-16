@@ -191,6 +191,19 @@ describe("ResultsTab interactions", () => {
     );
   });
 
+  it("navigates from the hover card action and keeps internal scrolling usable", () => {
+    vi.useFakeTimers();
+    renderResults();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "查看推荐对象乙的资料和 3 张报名图片" }));
+    act(() => { vi.advanceTimersByTime(300); });
+    const dialog = screen.getByRole("dialog", { name: "推荐对象乙的用户资料" });
+    fireEvent.scroll(dialog.firstElementChild!);
+    expect(screen.getByRole("button", { name: "查看个人主页" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "查看个人主页" }));
+    expect(screen.getByTestId("location-path").textContent).toBe("/u/profile/candidate");
+    expect(screen.queryByRole("dialog", { name: "推荐对象乙的用户资料" })).toBeNull();
+  });
+
   it("does not prefetch images when the pointer only passes over an item", () => {
     vi.useFakeTimers();
     renderResults();

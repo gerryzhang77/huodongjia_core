@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getMatchFieldCatalog, getMatchRules, saveMatchRules } from "./matchingApi";
+import { getMatchFieldCatalog, getMatchRules, saveMatchRules, getMatchGroups } from "./matchingApi";
 
 describe("getMatchFieldCatalog", () => {
   const fetchMock = vi.fn();
@@ -30,6 +30,14 @@ describe("getMatchFieldCatalog", () => {
         body: JSON.stringify({ participantUserIds: ["user-c", "user-a"] }),
       }),
     );
+  });
+
+  it("preserves supplementary recommendations without inventing a score", async () => {
+    fetchMock.mockResolvedValueOnce({ json: async () => ({ success: true, groups: [{
+      user_id: "a", best_match_users: ["b"], scores: [{ total_score: null, total_score_percent: null, supplementary: true, fields: [] }],
+    }] }) });
+    const result = await getMatchGroups("event-1");
+    expect(result.results[0].scores?.[0]).toMatchObject({ total_score: null, total_score_percent: null, supplementary: true });
   });
 
   it("keeps the legacy unscoped read available for prefetch callers", async () => {

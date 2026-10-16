@@ -19,7 +19,8 @@ const Person: React.FC<{ person?: Participant; compact?: boolean }> = ({ person,
   </div>
 );
 
-const toPercent = (score?: { total_score: number; total_score_percent?: number } | null) => {
+const toPercent = (score?: { total_score: number | null; total_score_percent?: number | null; supplementary?: boolean } | null) => {
+  if (!score || score.supplementary || score.total_score === null) return null;
   const value = Number(score?.total_score_percent ?? score?.total_score);
   if (!Number.isFinite(value)) return null;
   return Math.round(value <= 1 ? value * 100 : value);
