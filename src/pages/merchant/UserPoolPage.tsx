@@ -9,9 +9,9 @@
  * 5. 批量打标签、批量推送活动
  */
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   Search,
   Filter,
@@ -63,7 +63,6 @@ import {
 } from "@/features/merchant/user-pool/types";
 import {
   calculateUserPoolFilterOptions,
-  applyUserPoolFilters,
   getActiveFilterCount,
 } from "@/features/merchant/user-pool/utils";
 import {
@@ -258,6 +257,15 @@ const UserPoolPage: React.FC = () => {
   const [filterCriteria, setFilterCriteria] = useState<UserPoolFilterCriteria>({
     ...DEFAULT_USER_POOL_FILTER,
   });
+  const [debouncedKeyword, setDebouncedKeyword] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedKeyword(searchKeyword.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchKeyword]);
+  const poolScope = JSON.stringify([selectedActivityId, debouncedKeyword, filterCriteria]);
+  const [pageState, setPageState] = useState({ scope: "", page: 1 });
+  const poolPage = pageState.scope === poolScope ? pageState.page : 1;
+  const setPoolPage = (page: number) => setPageState({ scope: poolScope, page });
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(
     new Set(),
@@ -294,22 +302,30 @@ const UserPoolPage: React.FC = () => {
 
   // 1) 商家私域用户池 - 列表常变；60s stale 平衡新鲜度和重复拉取
   const {
-    data: merchantUsers = [],
+    data: poolData,
     isLoading: merchantUsersLoading,
+    isPlaceholderData: poolPageChanging,
     isError: merchantUsersError,
     refetch: refetchMerchantUsers,
   } = useQuery({
-    queryKey: USER_POOL_KEY,
+    queryKey: [...USER_POOL_KEY, poolScope, poolPage],
     queryFn: async () => {
-      const res = await getMerchantUserPool();
-      return res.success ? (res.data?.users ?? []) : [];
+      const res = await getMerchantUserPool(poolPage, 50, { keyword: debouncedKeyword, activityId: selectedActivityId || undefined, filters: filterCriteria });
+      if (!res.success) throw new Error(res.message || "获取用户库失败");
+      return res.data;
     },
-    select: (data) =>
-      (data as unknown[])
-        .map(normalizeMerchantUser)
-        .filter(Boolean) as MerchantUser[],
+    select: (data) => ({ ...data, users: data.users.map(normalizeMerchantUser).filter(Boolean) as MerchantUser[] }),
     staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
   });
+  const merchantUsers = useMemo(() => poolData?.users || [], [poolData?.users]);
+  const poolTotal = poolData?.total || 0;
+  const filteredTotal = poolData?.filteredTotal || 0;
+  const poolPages = Math.max(1, Math.ceil(filteredTotal / 50));
+  useEffect(() => { setSelectedUserIds(new Set()); }, [poolScope, poolPage]);
+  useEffect(() => {
+    if (poolData && !poolPageChanging && poolPage > poolPages) setPageState({ scope: poolScope, page: poolPages });
+  }, [poolData, poolPageChanging, poolPage, poolPages, poolScope]);
 
   // 2) 商家自定义标签 - 几乎不变；5min stale
   const {
@@ -341,8 +357,15 @@ const UserPoolPage: React.FC = () => {
     refetch: refetchActivities,
   } = useQuery({
     queryKey: ACTIVITIES_KEY,
-    queryFn: () => getMerchantActivities(),
-    select: normalizeActivityList,
+    queryFn: async () => {
+      const activities: any[] = [];
+      for (let page = 1; ; page += 1) {
+        const response = await getMerchantActivities({ page, pageSize: 100 });
+        const batch = normalizeActivityList(response);
+        activities.push(...batch);
+        if (batch.length < 100) return activities;
+      }
+    },
     staleTime: 5 * 60 * 1000,
   });
 
@@ -396,7 +419,7 @@ const UserPoolPage: React.FC = () => {
   });
 
   const myUsersLoading =
-    merchantUsersLoading || customTagsLoading || activitiesLoading;
+    merchantUsersLoading || poolPageChanging || customTagsLoading || activitiesLoading;
   const myUsersError =
     merchantUsersError || customTagsError || activitiesError;
 
@@ -436,33 +459,8 @@ const UserPoolPage: React.FC = () => {
 
   // ---- 数据 ----
 
-  // 选活动后只保留参与过该活动的用户；selectedActivityId 为 null 表示全部
-  const users: MerchantUser[] = useMemo(() => {
-    if (!selectedActivityId) return merchantUsers;
-    return merchantUsers.filter((u) =>
-      (u.participatedActivityIds || []).includes(selectedActivityId),
-    );
-  }, [merchantUsers, selectedActivityId]);
-
-  // 应用搜索 + 筛选
-  const filteredUsers = useMemo(() => {
-    // 先搜索
-    let result = users;
-    if (searchKeyword.trim()) {
-      const kw = searchKeyword.trim().toLowerCase();
-      result = result.filter(
-        (u) =>
-          u.name.toLowerCase().includes(kw) ||
-          (u.industry && u.industry.toLowerCase().includes(kw)) ||
-          (u.city && u.city.toLowerCase().includes(kw)) ||
-          (u.company && u.company.toLowerCase().includes(kw)) ||
-          u.autoTags.some((t) => t.toLowerCase().includes(kw)) ||
-          u.customTags.some((t) => t.toLowerCase().includes(kw)),
-      );
-    }
-    // 再筛选
-    return applyUserPoolFilters(result, filterCriteria);
-  }, [users, searchKeyword, filterCriteria]);
+  // Search and filtering happen over the entire organizer pool before pagination.
+  const filteredUsers = merchantUsers;
 
   // 按活动分组（仅 sortMode === "byActivity"）
   // groupBgPalette：柔和、低饱和度，仅做视觉分隔，不抢戏
@@ -522,28 +520,8 @@ const UserPoolPage: React.FC = () => {
     );
   }, [filteredUsers, sortMode, resolveActivityName]);
 
-  // 筛选选项
-  const filterOptions = useMemo(
-    () => calculateUserPoolFilterOptions(users),
-    [users],
-  );
-
-  // 统计数据
-  const stats = useMemo(() => {
-    const monthStart = new Date();
-    monthStart.setDate(1);
-    monthStart.setHours(0, 0, 0, 0);
-    return {
-      totalUsers: merchantUsers.length,
-      activeUsers: merchantUsers.filter((u: MerchantUser) => u.participationCount > 1).length,
-      newUsersThisMonth: merchantUsers.filter(
-        (u: MerchantUser) => u.memberSince && new Date(u.memberSince) >= monthStart,
-      ).length,
-      avgParticipation: merchantUsers.length > 0
-        ? (merchantUsers.reduce((sum, u) => sum + u.participationCount, 0) / merchantUsers.length).toFixed(1)
-        : 0,
-    };
-  }, [merchantUsers]);
+  const filterOptions = poolData?.filterOptions || calculateUserPoolFilterOptions([]);
+  const stats = poolData?.stats || { totalUsers: 0, activeUsers: 0, newUsersThisMonth: 0, avgParticipation: "0.0" };
 
   // 活跃筛选数
   const activeFilterCount = useMemo(
@@ -551,17 +529,7 @@ const UserPoolPage: React.FC = () => {
     [filterCriteria],
   );
 
-  // 每个活动在私域用户池中的人数：从 merchantUsers.participatedActivityIds 反向聚合
-  // 比 a.current_participants 更准（这是商家自己池子里的真实数）
-  const userCountByActivity = useMemo(() => {
-    const map = new Map<string, number>();
-    merchantUsers.forEach((u) => {
-      (u.participatedActivityIds || []).forEach((aid) => {
-        map.set(aid, (map.get(aid) ?? 0) + 1);
-      });
-    });
-    return map;
-  }, [merchantUsers]);
+  const userCountByActivity = useMemo(() => new Map(Object.entries(poolData?.activityCounts || {})), [poolData?.activityCounts]);
 
   // 活动选项列表
   const activityOptions: ActivityOption[] = useMemo(
@@ -909,7 +877,7 @@ const UserPoolPage: React.FC = () => {
         <UserPoolTabs
           activeTab={activeTab}
           onChange={setActiveTab}
-          myUserCount={merchantUsers.length}
+          myUserCount={poolTotal}
           platformUserCount={platformUsers.length}
         />
 
@@ -958,7 +926,7 @@ const UserPoolPage: React.FC = () => {
                 bgColor="bg-primary-50"
               />
               <StatCard
-                label="活跃用户"
+                label="再次参与用户"
                 value={stats.activeUsers}
                 icon={UserCheck}
                 iconColor="text-green-500"
@@ -985,7 +953,7 @@ const UserPoolPage: React.FC = () => {
               <ActivitySelector
                 selectedActivityId={selectedActivityId}
                 activities={activityOptions}
-                totalUserCount={merchantUsers.length}
+                totalUserCount={poolTotal}
                 onSelect={handleActivityChange}
               />
               <div className="flex items-center gap-2">
@@ -1062,11 +1030,11 @@ const UserPoolPage: React.FC = () => {
                       </svg>
                     )}
                   </div>
-                  {isAllSelected ? "取消全选" : "全选"}
+                  {isAllSelected ? "取消本页全选" : "全选本页"}
                 </button>
                 <span className="text-sm text-gray-400">
-                  共 {filteredUsers.length} 人
-                  {filteredUsers.length !== users.length && (
+                  共 {filteredTotal} 人
+                  {filteredTotal !== (poolData?.scopeTotal || 0) && (
                     <span>
                       {" "}
                       (已筛选,{" "}
@@ -1144,7 +1112,7 @@ const UserPoolPage: React.FC = () => {
                       ? "没有匹配的用户，试试调整筛选条件"
                       : selectedActivityId
                         ? "该活动暂无报名用户"
-                        : "活动结束后，审核通过的用户会自动加入这里"}
+                        : "报名审核通过的用户会自动出现在这里"}
                   </p>
                   {(searchKeyword || activeFilterCount > 0) && (
                     <button
@@ -1182,7 +1150,7 @@ const UserPoolPage: React.FC = () => {
                           <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
                           {group.name}
                           <span className="text-gray-400">
-                            ({group.users.length} 人)
+                            (本页 {group.users.length} 人)
                           </span>
                           {!isOther && (
                             <ChevronRight
@@ -1221,6 +1189,11 @@ const UserPoolPage: React.FC = () => {
                 ))
               )}
             </div>
+            {poolPages > 1 && <div className="flex items-center justify-center gap-4 py-2 text-sm text-gray-600">
+              <button type="button" disabled={poolPage <= 1} className="rounded-lg border border-gray-200 bg-white px-4 py-2 disabled:opacity-40" onClick={() => setPoolPage(poolPage - 1)}>上一页</button>
+              <span>第 {poolPage} / {poolPages} 页 · 共 {filteredTotal} 人</span>
+              <button type="button" disabled={poolPage >= poolPages} className="rounded-lg border border-gray-200 bg-white px-4 py-2 disabled:opacity-40" onClick={() => setPoolPage(poolPage + 1)}>下一页</button>
+            </div>}
           </>
         )}
 

@@ -108,6 +108,7 @@ export interface CreateActivityRequest {
 
 export interface ActivityQueryParams {
   page?: number;
+  pageSize?: number;
   limit?: number;
   status?: ActivityStatus;
 }

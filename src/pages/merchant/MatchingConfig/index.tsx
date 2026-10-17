@@ -1,3 +1,4 @@
+import MatchingAvailability from "@/features/matching/components/MatchingAvailability";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   useLocation,
@@ -10,7 +11,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  ClipboardCheck,
   FileSliders,
   ListChecks,
   Loader2,
@@ -37,7 +37,6 @@ import type { MatchResultState } from "@/features/matching/types";
 type WizardStep =
   | "participants"
   | "rules"
-  | "preview"
   | "execute"
   | "results";
 
@@ -49,7 +48,6 @@ const WIZARD_STEPS: Array<{
 }> = [
   { key: "participants", label: "选择参与人", shortLabel: "参与人", icon: Users },
   { key: "rules", label: "设置规则", shortLabel: "规则", icon: FileSliders },
-  { key: "preview", label: "预览与校验", shortLabel: "校验", icon: ClipboardCheck },
   { key: "execute", label: "执行匹配", shortLabel: "执行", icon: PlayCircle },
   { key: "results", label: "查看结果", shortLabel: "结果", icon: ListChecks },
 ];
@@ -94,6 +92,8 @@ const MatchingConfigPage: React.FC = () => {
     isPublishing,
     isCreatingAdjustmentDraft,
     isPreflighting,
+    isCheckingAvailability,
+    preflightError,
     isValidating,
     isParticipantsRefreshing,
     isRulesLocked,
@@ -114,6 +114,7 @@ const MatchingConfigPage: React.FC = () => {
     eligibleParticipantCount,
     lastPreflightResult,
     lastValidationResult,
+    resultConstraints,
     resultState,
     matchStatusId,
     resultVersion,
@@ -121,9 +122,9 @@ const MatchingConfigPage: React.FC = () => {
     setRules,
     setConstraints,
     setParticipantSelected,
+    setParticipantsSelected,
     selectAllParticipants,
     handleSaveRules,
-    handleRunPreflight,
     handleStartMatching,
     handlePublish,
     handleValidateResults,
@@ -240,15 +241,10 @@ const MatchingConfigPage: React.FC = () => {
     setIsSavingRules(true);
     try {
       await handleSaveRules("默认配置");
-      setWizardStep("preview");
+      setWizardStep("execute");
     } finally {
       setIsSavingRules(false);
     }
-  };
-
-  const runPreflight = async () => {
-    const result = await handleRunPreflight();
-    if (result?.preflightResult.canExecute) setWizardStep("execute");
   };
 
   const publishAdapter = async (
@@ -518,7 +514,7 @@ const MatchingConfigPage: React.FC = () => {
               schemaFields={registrationSchema}
               schemaGroups={registrationSchemaGroups}
               fieldCatalog={fieldCatalog}
-              preflightResult={lastPreflightResult}
+              availability={<MatchingAvailability result={lastPreflightResult} participants={participants} selectedIds={selectedParticipantIds} checking={isCheckingAvailability || isPreflighting} error={preflightError} disabled={isMatching} onSelection={setParticipantsSelected} />}
               showFooterActions={false}
             />
             <div className="flex flex-col-reverse gap-3 rounded-2xl border border-gray-100 bg-white p-4 sm:flex-row sm:justify-between">
@@ -535,77 +531,7 @@ const MatchingConfigPage: React.FC = () => {
                 onClick={() => void saveRulesAndContinue()}
                 iconRight={<ChevronRight size={16} />}
               >
-                保存并进入校验
-              </Button>
-            </div>
-          </section>
-        )}
-
-        {wizardStep === "preview" && (
-          <section className="space-y-4">
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-gray-900">执行前预览与校验</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                按已有资料匹配，选填项缺失会自动跳过；校验推荐人数和限制条件。
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <p className="text-xs text-gray-500">参与人数</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{eligibleParticipantCount}</p>
-                </div>
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <p className="text-xs text-gray-500">启用规则</p>
-                  <p className="mt-1 text-2xl font-bold text-gray-900">{enabledRules.length}</p>
-                </div>
-                <div className="rounded-xl bg-gray-50 p-4">
-                  <p className="text-xs text-gray-500">每人匹配</p>
-                  <p className="mt-1 text-lg font-bold text-gray-900">
-                    {constraints.minMatches}–{constraints.maxMatches} 人
-                  </p>
-                </div>
-              </div>
-              {lastPreflightResult && (
-                <div
-                  className={`mt-4 rounded-xl border p-4 ${
-                    lastPreflightResult.canExecute
-                      ? "border-emerald-200 bg-emerald-50"
-                      : "border-red-200 bg-red-50"
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-gray-900">
-                    {lastPreflightResult.canExecute ? "校验通过" : "校验未通过"}
-                  </p>
-                  <p className="mt-1 text-sm text-gray-600">{lastPreflightResult.message}</p>
-                  {!!lastPreflightResult.warnings?.length && (
-                    <ul className="mt-3 space-y-1 text-xs text-gray-600">
-                      {lastPreflightResult.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-                    </ul>
-                  )}
-                  {!lastPreflightResult.canExecute && (
-                    <ul className="mt-3 space-y-1 text-xs text-red-700">
-                      {lastPreflightResult.ruleDiagnostics
-                        .filter((item) => !item.canExecute)
-                        .slice(0, 5)
-                        .map((item) => <li key={item.groupKey}>• {item.message}</li>)}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-              <Button
-                variant="outline"
-                onClick={() => setWizardStep("rules")}
-                icon={<ChevronLeft size={16} />}
-              >
-                返回规则
-              </Button>
-              <Button
-                loading={isPreflighting}
-                onClick={() => void runPreflight()}
-                iconRight={<ClipboardCheck size={16} />}
-              >
-                {lastPreflightResult?.canExecute ? "重新校验" : "运行校验"}
+                保存并继续
               </Button>
             </div>
           </section>
@@ -613,6 +539,7 @@ const MatchingConfigPage: React.FC = () => {
 
         {wizardStep === "execute" && (
           <section className="space-y-4">
+            <MatchingAvailability result={lastPreflightResult} participants={participants} selectedIds={selectedParticipantIds} checking={isCheckingAvailability || isPreflighting} error={preflightError} disabled={isMatching} onSelection={setParticipantsSelected} />
             <div className="rounded-2xl border border-gray-100 bg-white p-6 text-center shadow-sm">
               <PlayCircle size={44} className="mx-auto text-primary-500" />
               <h2 className="mt-3 text-lg font-semibold text-gray-900">
@@ -634,7 +561,7 @@ const MatchingConfigPage: React.FC = () => {
                   </p>
                 </div>
               ) : (
-                <Button className="mt-6" onClick={() => void handleStartMatching()}>
+                <Button className="mt-6" loading={isPreflighting} disabled={eligibleParticipantCount < 2 || lastPreflightResult?.canExecute === false} onClick={() => void handleStartMatching()}>
                   开始执行匹配
                 </Button>
               )}
@@ -643,10 +570,10 @@ const MatchingConfigPage: React.FC = () => {
               <Button
                 variant="outline"
                 disabled={isMatching}
-                onClick={() => setWizardStep("preview")}
+                onClick={() => setWizardStep("rules")}
                 icon={<ChevronLeft size={16} />}
               >
-                返回校验
+                返回规则
               </Button>
               {matchResults.length > 0 && !isMatching && (
                 <Button
@@ -676,7 +603,7 @@ const MatchingConfigPage: React.FC = () => {
             isRematching={isMatching}
             history={history}
             currentHistoryId={currentHistoryId}
-            constraints={constraints}
+            constraints={resultConstraints}
             onResultsChanged={handleRefresh}
             readOnly={effectiveResultState === "published"}
             actionsDisabled={isRevalidating || Boolean(refreshError)}

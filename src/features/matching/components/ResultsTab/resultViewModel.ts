@@ -172,7 +172,7 @@ export const buildParticipantResultRows = ({
       hasNoMatches,
       isLowMatch:
         !hasNoMatches &&
-        (bestScore == null || bestScore < lowMatchThreshold),
+        bestScore != null && bestScore < lowMatchThreshold,
       isLocked: record?.isLocked === true,
     };
   });

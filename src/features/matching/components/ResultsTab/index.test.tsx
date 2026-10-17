@@ -53,6 +53,8 @@ const renderResults = (
     matchStatusId?: string;
     resultRevision?: number;
     resultVersion?: number;
+    matchResults?: ParticipantMatchResult[];
+    constraints?: MatchConstraints;
   } = {},
 ) => {
   const queryClient = new QueryClient({
@@ -108,6 +110,25 @@ afterEach(() => {
 });
 
 describe("ResultsTab interactions", () => {
+  it("shows explicit zero/partial counts, filters their names, and does not flag supplements as low matches", () => {
+    renderResults(vi.fn(), {
+      constraints: { ...constraints, minMatches: 2 },
+      matchResults: [
+        { ...matchResults[0], scores: [{ total_score: null, supplementary: true }] },
+        { ...matchResults[0], id: "empty", userId: "candidate", bestMatchUserIds: [], scores: [], unmatchedReason: "没有满足年龄限制的对象" },
+      ],
+    });
+    expect(screen.getByText("2 人参与，1 人已获得推荐")).toBeInTheDocument();
+    expect(screen.queryByText(/需关注/)).toBeNull();
+    expect(screen.queryByText("低匹配")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "1 人暂无推荐 · 查看名单" }));
+    expect(screen.getByText("没有满足年龄限制的对象")).toBeInTheDocument();
+    expect(screen.queryByText("参与者甲")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "1 人推荐不足 · 查看名单" }));
+    expect(screen.getByText("参与者甲")).toBeInTheDocument();
+    expect(screen.queryByText("没有满足年龄限制的对象")).toBeNull();
+  });
+
   it("opens the dedicated relation-based Excel export workspace", () => {
     renderResults(vi.fn(), {
       matchStatusId: "match-1",

@@ -51,6 +51,7 @@ interface RulesTabProps {
   schemaGroups?: MatchingSchemaGroup[];
   fieldCatalog?: MatchFieldCatalogItem[];
   preflightResult?: MatchPreflightResult | null;
+  availability?: React.ReactNode;
   schemaLoading?: boolean;
   /** 分步页面由父级统一提供导航操作时隐藏组件自身操作栏。 */
   showFooterActions?: boolean;
@@ -82,7 +83,7 @@ const RulesTab: React.FC<RulesTabProps> = ({
   schemaFields = [],
   schemaGroups = [],
   fieldCatalog = [],
-  preflightResult,
+  availability,
   schemaLoading = false,
   showFooterActions = true,
 }) => {
@@ -549,31 +550,23 @@ const RulesTab: React.FC<RulesTabProps> = ({
 
         <div className="flex items-center justify-between gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3">
           <div>
-            <p className="text-sm font-medium text-gray-800">本次允许补充推荐</p>
+            <p className="text-sm font-medium text-gray-800">推荐不足时自动补充</p>
             <p className="mt-1 text-xs leading-5 text-gray-500">
-              选填项未填写会自动跳过。开启后，资料匹配不足时补充符合限制的对象，不计算匹配分数。
+              优先按资料匹配，不足时补充符合限制条件的对象；补充对象不显示匹配分数。
             </p>
           </div>
           <Switch
             checked={constraints.allowSupplementaryRecommendations === true}
             disabled={isRulesLocked}
             size="small"
-            aria-label="本次允许补充推荐"
+            aria-label="推荐不足时自动补充"
             onChange={(allowSupplementaryRecommendations) =>
               onConstraintsChange({ ...constraints, allowSupplementaryRecommendations })
             }
           />
         </div>
 
-        {!!preflightResult?.insufficientParticipants && (
-          <div className="flex items-start gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-sm text-orange-700">
-            <AlertCircle size={16} className="mt-0.5 shrink-0" />
-            <span>
-              当前设置下有 {preflightResult.insufficientParticipants}{" "}
-              位参与者无法获得最低推荐人数。
-            </span>
-          </div>
-        )}
+        {availability}
 
         {hasMerchantDerivedFields && (
           <div className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-600">

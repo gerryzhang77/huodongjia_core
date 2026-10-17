@@ -38,6 +38,7 @@ type MatchResultRecord = {
   scores?: unknown;
   created_at?: string;
   is_locked?: boolean;
+  unmatched_reason?: string;
 };
 
 type MatchStatsRecord = {
@@ -64,6 +65,7 @@ type MatchResultsApiResponse = {
   revision?: number;
   sourceMatchStatusId?: string | null;
   participantUserIds?: string[];
+  config?: MatchConstraints;
   data?: Omit<MatchResultsApiResponse, "data">;
 };
 
@@ -551,6 +553,7 @@ export const getMatchGroups = async (
   revision?: number;
   sourceMatchStatusId?: string | null;
   participantUserIds: string[];
+  config?: MatchConstraints;
 }> => {
   const token = getToken();
 
@@ -577,6 +580,7 @@ export const getMatchGroups = async (
     scores: parseMatchCandidateScores(r.scores),
     createdAt: r.created_at,
     isLocked: r.is_locked === true,
+    unmatchedReason: r.unmatched_reason,
   }));
 
   // 解析后端返回的 stats（可选字段，老版本后端不返回时为 null）
@@ -605,6 +609,7 @@ export const getMatchGroups = async (
   return {
     results,
     stats,
+    config: data.config ?? data.data?.config,
     resultState: data.resultState || data.data?.resultState,
     matchStatusId: data.matchStatusId || data.data?.matchStatusId,
     version: Number(data.version || data.data?.version) || undefined,

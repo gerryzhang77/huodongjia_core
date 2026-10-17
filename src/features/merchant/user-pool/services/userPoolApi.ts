@@ -1,11 +1,27 @@
 import { api } from "@/services/api";
+import type { MerchantUser, UserPoolFilterCriteria, UserPoolFilterOptions } from "../types";
 
 // =====================================================================
 // 我的用户 / 发现用户 / 配额
 // =====================================================================
 
-export const getMerchantUserPool = (page = 1, pageSize = 50) =>
-  api.get("/api/merchant/user-pool", { params: { page, pageSize } });
+export interface UserPoolPageData {
+  users: MerchantUser[];
+  total: number;
+  filteredTotal: number;
+  scopeTotal: number;
+  page: number;
+  pageSize: number;
+  stats: { totalUsers: number; activeUsers: number; newUsersThisMonth: number; avgParticipation: string };
+  activityCounts: Record<string, number>;
+  filterOptions: UserPoolFilterOptions;
+}
+
+export const getMerchantUserPool = (page = 1, pageSize = 50, options?: { keyword?: string; activityId?: string; filters?: UserPoolFilterCriteria }) =>
+  api.get<{ success: boolean; message?: string; data: UserPoolPageData }>("/api/merchant/user-pool", {
+    params: { page, pageSize, ...options, filters: options?.filters ? JSON.stringify(options.filters) : undefined },
+    timeout: 60000,
+  });
 
 export const getPlatformUsers = (page = 1, pageSize = 50, keyword?: string) =>
   api.get("/api/merchant/platform-users", { params: { page, pageSize, keyword } });

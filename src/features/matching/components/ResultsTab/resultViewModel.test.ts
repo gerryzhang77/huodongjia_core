@@ -130,3 +130,15 @@ describe("sortParticipantResultRows", () => {
     ).toEqual(["a", "b", "c"]);
   });
 });
+
+describe("supplementary result status", () => {
+  it("keeps an unscored supplementary recommendation out of low-score warnings", () => {
+    const [row] = buildParticipantResultRows({
+      matchResults: [makeRecord("a", ["b"], [{ total_score: null, supplementary: true }])],
+      participantMap: new Map(), validationIssueMap: new Map(), lowMatchThreshold: 40,
+    });
+    expect(row.hasNoMatches).toBe(false);
+    expect(row.bestScore).toBeNull();
+    expect(row.isLowMatch).toBe(false);
+  });
+});

@@ -137,6 +137,7 @@ export interface MatchPreflightResult {
     availableCandidates: number;
     requiredCandidates: number;
     canMeetMinimum: boolean;
+    reason?: string;
   }>;
   insufficientParticipants?: number;
   message: string;
@@ -227,6 +228,7 @@ export interface ParticipantMatchResult {
     supplementary?: boolean;
     fields?: Array<Record<string, unknown>>;
   } | null> | null;
+  unmatchedReason?: string;
   /** 记录创建时间 */
   createdAt: string;
   /** 锁定后，人工调整与再次保存都会被后端拒绝。 */
@@ -249,6 +251,7 @@ export interface MatchValidationResult {
   version: number;
   revision: number;
   issues: MatchValidationIssue[];
+  warnings?: MatchValidationIssue[];
   summary: {
     eligibleParticipants: number;
     resultRows: number;

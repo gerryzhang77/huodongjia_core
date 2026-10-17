@@ -79,3 +79,27 @@ describe("matching step loading and cache", () => {
     view.unmount(); view.client.clear();
   });
 });
+
+describe("automatic matching preflight", () => {
+  it("invalidates an old warning on a toggle and ignores an older in-flight response", async () => {
+    const rule = { id: "rule", name: "兴趣", source_field: "hobby", target_field: "hobby", operator: "exact" as const, weight: 1, enabled: true };
+    vi.mocked(api.getMatchRules).mockResolvedValue([rule]);
+    let finishOld!: (value: any) => void;
+    vi.mocked(api.preflightMatching).mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+    const healthy = { canExecute: true, totalParticipants: 2, eligibleParticipants: 2, ruleDiagnostics: [], fieldDiagnostics: [], hardRuleDiagnostics: [], insufficientParticipants: 0, message: "可以匹配" };
+    vi.mocked(api.preflightMatching).mockResolvedValue(healthy);
+    const view = setup("rules");
+    await waitFor(() => expect(api.preflightMatching).toHaveBeenCalledTimes(1));
+    act(() => view.result.current.setConstraints({ ...config, allowSupplementaryRecommendations: true }));
+    await act(async () => { finishOld({ ...healthy, canExecute: false, insufficientParticipants: 1 }); });
+    expect(view.result.current.lastPreflightResult).toBeNull();
+    await waitFor(() => expect(view.result.current.lastPreflightResult?.canExecute).toBe(true));
+    expect(api.preflightMatching).toHaveBeenLastCalledWith("event", expect.any(Array), expect.objectContaining({ allowSupplementaryRecommendations: true }), ["a", "b"]);
+    act(() => view.result.current.setParticipantsSelected(["a"], false));
+    expect(view.result.current.lastPreflightResult).toBeNull();
+    expect(view.result.current.selectedParticipantIds).toEqual(["b"]);
+    act(() => view.result.current.setParticipantsSelected(["a"], true));
+    expect(view.result.current.selectedParticipantIds).toEqual(["a", "b"]);
+    view.unmount(); view.client.clear();
+  });
+});

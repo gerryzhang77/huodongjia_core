@@ -437,6 +437,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   const [resultSort, setResultSort] =
     useState<ParticipantResultSort>("score-desc");
   const [currentPage, setCurrentPage] = useState(1);
+  const [resultFilter, setResultFilter] = useState<"all" | "empty" | "short">("all");
   const [expandedOwnerId, setExpandedOwnerId] = useState<string | null>(null);
   const [showHistoryPanel, setShowHistoryPanel] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -487,17 +488,15 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
     [matchResults, participantMap, validationIssueMap],
   );
 
-  const attentionCount = useMemo(
-    () =>
-      participantResultRows.filter(
-        (row) => row.hasConflict || row.hasNoMatches || row.isLowMatch,
-      ).length,
-    [participantResultRows],
-  );
+  const matchedParticipantCount = participantResultRows.filter(row => !row.hasNoMatches).length;
+  const emptyParticipantCount = participantResultRows.filter(row => row.hasNoMatches).length;
+  const shortParticipantCount = participantResultRows.filter(row => !row.hasNoMatches && row.matches.length < constraints.minMatches).length;
 
   const filteredAndSortedRows = useMemo(() => {
     const keyword = searchKeyword.trim().toLowerCase();
     const filtered = participantResultRows.filter((row) => {
+      if (resultFilter === "empty" && !row.hasNoMatches) return false;
+      if (resultFilter === "short" && (row.hasNoMatches || row.matches.length >= constraints.minMatches)) return false;
       return (
         !keyword ||
         getParticipantSearchText(row.owner).includes(keyword) ||
@@ -508,7 +507,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
     });
 
     return sortParticipantResultRows(filtered, resultSort);
-  }, [participantResultRows, resultSort, searchKeyword]);
+  }, [participantResultRows, resultSort, searchKeyword, resultFilter, constraints.minMatches]);
 
   const totalPages = Math.max(
     1,
@@ -587,9 +586,10 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
     );
     const targetRow =
       sortedRows.find((row) => row.hasConflict) ||
-      sortedRows.find((row) => row.hasNoMatches || row.isLowMatch);
+      sortedRows.find((row) => row.hasNoMatches);
 
     setSearchKeyword("");
+    setResultFilter("all");
 
     if (!targetRow) {
       setCurrentPage(1);
@@ -648,7 +648,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
 
   const participantPreviews: ParticipantPreview[] = useMemo(
     () =>
-      matchResults.map((r) => {
+      matchResults.filter(r => r.bestMatchUserIds.length > 0).map((r) => {
         const p = participantMap.get(r.userId);
         return {
           id: r.userId,
@@ -663,7 +663,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   // 发布对话框需要 MatchGroupStats 结构，这里按"每个参与者一条记录"的形式合成
   const publishGroupStats: MatchGroupStats[] = useMemo(
     () =>
-      matchResults.map((r) => ({
+      matchResults.filter(r => r.bestMatchUserIds.length > 0).map((r) => ({
         id: r.id,
         name: participantMap.get(r.userId)?.name,
         members: [r.userId, ...r.bestMatchUserIds],
@@ -729,13 +729,11 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
             </div>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
               <span>
-                覆盖 {resultRecordMap.size}/{coverageTotal} 位参与者
+                {coverageTotal} 人参与，{matchedParticipantCount} 人已获得推荐
               </span>
-              {attentionCount > 0 && (
-                <span className="font-medium text-orange-600">
-                  {attentionCount} 位需关注
-                </span>
-              )}
+              {emptyParticipantCount > 0 && <button type="button" className="text-orange-700 underline underline-offset-2" onClick={() => { setResultFilter("empty"); setSearchKeyword(""); setCurrentPage(1); }}>{emptyParticipantCount} 人暂无推荐 · 查看名单</button>}
+              {shortParticipantCount > 0 && <button type="button" className="text-gray-600 underline underline-offset-2" onClick={() => { setResultFilter("short"); setSearchKeyword(""); setCurrentPage(1); }}>{shortParticipantCount} 人推荐不足 · 查看名单</button>}
+              {resultFilter !== "all" && <button type="button" className="text-primary-600" onClick={() => { setResultFilter("all"); setCurrentPage(1); }}>查看全部</button>}
             </div>
           </div>
 
@@ -939,7 +937,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                             )}
                             {(row.hasConflict ||
                               row.hasNoMatches ||
-                              row.isLowMatch) && (
+                              row.matches.length < constraints.minMatches) && (
                               <div className="mt-1.5 flex flex-wrap gap-1.5">
                                 {row.hasConflict && (
                                   <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
@@ -948,13 +946,11 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                                 )}
                                 {row.hasNoMatches && (
                                   <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">
-                                    无结果
+                                    暂无推荐
                                   </span>
                                 )}
-                                {row.isLowMatch && (
-                                  <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">
-                                    低匹配
-                                  </span>
+                                {!row.hasNoMatches && row.matches.length < constraints.minMatches && (
+                                  <span className="text-[11px] text-gray-600">已推荐 {row.matches.length} 人，目标至少 {constraints.minMatches} 人</span>
                                 )}
                               </div>
                             )}
@@ -986,7 +982,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                           </div>
                         ) : (
                           <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50 px-3 py-3 text-sm text-orange-700">
-                            暂无推荐对象，需要人工补充名单。
+                            {row.record?.unmatchedReason || "暂无推荐对象，可人工安排，不影响其他人发布。"}
                           </div>
                         )}
                       </div>
@@ -1083,7 +1079,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                         </div>
                       ) : (
                         <div className="rounded-xl border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-gray-500">
-                          暂无推荐对象，可通过“补充名单”手动添加。
+                          {row.record?.unmatchedReason || "暂无推荐对象，可通过“补充名单”手动添加。"}
                         </div>
                       )}
                     </div>
@@ -1235,7 +1231,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
       <PublishResultDialog
         visible={showPublishDialog}
         groups={publishGroupStats}
-        participantCount={matchResults.length}
+        participantCount={matchedParticipantCount}
         participants={participantPreviews}
         onConfirm={handlePublishClick}
         onCancel={() => setShowPublishDialog(false)}

@@ -253,6 +253,8 @@ export function useMatchingLogic({
   const [isCreatingAdjustmentDraft, setIsCreatingAdjustmentDraft] =
     useState(false);
   const [isPreflighting, setIsPreflighting] = useState(false);
+  const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+  const [preflightError, setPreflightError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [matchingProgress, setMatchingProgress] = useState(0);
@@ -301,6 +303,13 @@ export function useMatchingLogic({
     [selectedParticipantIds],
   );
   const eligibleParticipantCount = selectedParticipantIds.length;
+  const settingsFingerprint = JSON.stringify({
+    rules: rules.map((rule, index) => normalizeRuleForUi(rule, index)),
+    constraints,
+    participantUserIds: [...selectedParticipantIds].sort(),
+  });
+  const currentSettingsRef = useRef(settingsFingerprint);
+  currentSettingsRef.current = settingsFingerprint;
   const catalogQuery = useQuery({
     ...matchingQueries.catalog(activityId, selectedParticipantIds),
     enabled: queryEnabled && fieldCatalogEnabled && participantsQuery.isSuccess,
@@ -384,6 +393,14 @@ export function useMatchingLogic({
     [],
   );
 
+  const setParticipantsSelected = useCallback((ids: string[], selected: boolean) => {
+    setExcludedParticipantIds(current => {
+      const next = new Set(current);
+      ids.forEach(id => selected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  }, []);
+
   const selectAllParticipants = useCallback(() => {
     setExcludedParticipantIds(new Set());
   }, []);
@@ -391,7 +408,26 @@ export function useMatchingLogic({
   useEffect(() => {
     setLastPreflightResult(null);
     preflightFingerprintRef.current = null;
-  }, [selectedParticipantFingerprint]);
+    setPreflightError(null);
+    setIsCheckingAvailability(false);
+    const settings = JSON.parse(settingsFingerprint) as { rules: MatchRule[]; constraints: MatchConstraints; participantUserIds: string[] };
+    const enabled = settings.rules.filter(rule => rule.enabled && rule.source_field && rule.target_field && rule.operator);
+    if (!activityId || !rulesQuery.isSuccess || !configQuery.isSuccess || !participantsQuery.isSuccess ||
+      !["rules", "preview", "execute"].includes(step) || isMatching || enabled.length === 0 || settings.participantUserIds.length < 2) return;
+    let active = true;
+    setIsCheckingAvailability(true);
+    const timer = setTimeout(() => {
+      void preflightMatching(activityId, enabled, settings.constraints, settings.participantUserIds)
+        .then(result => {
+          if (!active || currentSettingsRef.current !== settingsFingerprint) return;
+          preflightFingerprintRef.current = settingsFingerprint;
+          setLastPreflightResult(result);
+        }).catch(() => {
+          if (active) setPreflightError("检查暂时失败，开始匹配时将重新检查");
+        }).finally(() => { if (active) setIsCheckingAvailability(false); });
+    }, 600);
+    return () => { active = false; clearTimeout(timer); };
+  }, [activityId, settingsFingerprint, step, isMatching, rulesQuery.isSuccess, configQuery.isSuccess, participantsQuery.isSuccess]);
 
   useEffect(() => {
     if (configQuery.data && !constraintsDirty.current) setConstraintsState(configQuery.data);
@@ -588,6 +624,7 @@ export function useMatchingLogic({
     }
 
     setIsPreflighting(true);
+    const requestedFingerprint = currentSettingsRef.current;
     try {
       const preflightResult = await preflightMatching(
         activityId,
@@ -595,6 +632,8 @@ export function useMatchingLogic({
         constraints,
         selectedParticipantIds,
       );
+      if (requestedFingerprint !== currentSettingsRef.current) return null;
+      preflightFingerprintRef.current = requestedFingerprint;
       setLastPreflightResult(preflightResult);
       if (!preflightResult.canExecute) {
         Toast.show({
@@ -943,6 +982,8 @@ export function useMatchingLogic({
     isPublishing,
     isCreatingAdjustmentDraft,
     isPreflighting,
+    isCheckingAvailability,
+    preflightError,
     isValidating,
     isRefreshing,
     isParticipantsRefreshing:
@@ -969,8 +1010,9 @@ export function useMatchingLogic({
     registrationSchemaGroups,
     fieldCatalog,
     eligibleParticipantCount,
-    lastPreflightResult,
+    lastPreflightResult: preflightFingerprintRef.current === settingsFingerprint ? lastPreflightResult : null,
     lastValidationResult,
+    resultConstraints: resultsQuery.data?.config || constraints,
     resultState: resultsQuery.data?.resultState,
     matchStatusId: resultsQuery.data?.matchStatusId,
     resultVersion: resultsQuery.data?.version,
@@ -982,6 +1024,7 @@ export function useMatchingLogic({
     setConstraints,
     setGroups,
     setParticipantSelected,
+    setParticipantsSelected,
     selectAllParticipants,
 
     // 规则操作
