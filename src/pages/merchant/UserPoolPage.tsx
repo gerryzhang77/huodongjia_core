@@ -883,7 +883,7 @@ const UserPoolPage: React.FC = () => {
 
         {activeTab === "my-users" && (
           <p className="text-xs text-gray-500 px-1">
-            活动结束后，审核通过的报名用户会自动加入，仅当前商家可见。
+            报名审核通过的用户会自动加入，同一用户只计一次；历史用户继续保留，仅当前商家可见。
           </p>
         )}
 
