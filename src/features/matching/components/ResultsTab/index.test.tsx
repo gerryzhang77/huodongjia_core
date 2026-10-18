@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import {
   QueryClient,
   QueryClientProvider,
@@ -121,6 +121,69 @@ afterEach(() => {
 });
 
 describe("ResultsTab interactions", () => {
+  it.each(["关闭", "关闭并返回卡片", "Escape", "遮罩"])("returns to the exact recommendation occurrence after %s", async (closeMethod) => {
+    vi.useFakeTimers();
+    renderResults(vi.fn(), {
+      participants: [
+        { id: "owner", name: "参与者甲", enrollmentId: "owner-enrollment" },
+        { id: "other-owner", name: "参与者丙", enrollmentId: "other-enrollment" },
+        { id: "candidate", name: "推荐对象乙", enrollmentId: "candidate-enrollment" },
+      ],
+      matchResults: [
+        matchResults[0],
+        { ...matchResults[0], id: "other-result", userId: "other-owner" },
+        { ...matchResults[0], id: "candidate-result", userId: "candidate", bestMatchUserIds: ["owner"] },
+      ],
+    });
+    const sourceRow = document.getElementById("matching-result-other-owner")!;
+    const source = within(sourceRow).getByRole("group", { name: "推荐对象乙的匹配卡片" });
+    const scroll = vi.fn();
+    source.scrollIntoView = scroll;
+    fireEvent.keyDown(within(source).getByRole("button"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "查看报名问卷" }));
+    const drawer = screen.getByRole("dialog", { name: "推荐对象乙的报名问卷" });
+    expect(screen.queryByText("刚刚查看")).toBeNull();
+    if (closeMethod === "Escape") fireEvent.keyDown(document, { key: "Escape" });
+    else if (closeMethod === "遮罩") fireEvent.click(drawer.previousElementSibling!);
+    else fireEvent.click(within(drawer).getByRole("button", { name: closeMethod }));
+    await act(async () => { vi.advanceTimersByTime(20); });
+    expect(source).toHaveFocus();
+    expect(within(source).getByRole("status")).toHaveTextContent("刚刚查看");
+    expect(screen.getAllByText("刚刚查看")).toHaveLength(1);
+    expect(scroll).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(400); });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.queryByText("刚刚查看")).toBeNull();
+  });
+
+  it("keeps the expanded list and search while returning an offscreen source card into view", async () => {
+    vi.useFakeTimers();
+    const candidateIds = ["candidate", "second", "third", "fourth"];
+    renderResults(vi.fn(), {
+      participants: [
+        { id: "owner", name: "参与者甲", enrollmentId: "owner-enrollment" },
+        ...candidateIds.map((id) => ({ id, name: `推荐${id}`, enrollmentId: `${id}-enrollment` })),
+      ],
+      matchResults: [{ ...matchResults[0], bestMatchUserIds: candidateIds, scores: candidateIds.map(() => ({ total_score: 0.8, total_score_percent: 80 })) }],
+    });
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "参与者甲" } });
+    fireEvent.click(screen.getByRole("button", { name: "展开参与者甲其余 1 位推荐对象" }));
+    const source = within(screen.getByRole("region", { name: "参与者甲的推荐对象" })).getByRole("group", { name: "推荐fourth的匹配卡片" });
+    source.getBoundingClientRect = () => ({ top: -90, bottom: -10, left: 0, right: 240, width: 240, height: 80, x: 0, y: -90, toJSON: () => ({}) });
+    const scroll = vi.fn();
+    source.scrollIntoView = scroll;
+    fireEvent.keyDown(within(source).getByRole("button"), { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "查看报名问卷" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭并返回卡片" }));
+    await act(async () => { vi.advanceTimersByTime(20); });
+    expect(source).toHaveFocus();
+    expect(within(source).getByText("刚刚查看")).toBeInTheDocument();
+    expect(scroll).toHaveBeenCalledWith({ block: "nearest", inline: "nearest", behavior: "instant" });
+    expect(screen.getByRole("searchbox")).toHaveValue("参与者甲");
+    expect(screen.getByRole("button", { name: "收起参与者甲的推荐名单" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("removes the shared questionnaire subtitle and opens the protected questionnaire from the summary", async () => {
     useAuthStore.setState({ user: { id: "organizer", name: "测试主办方", user_type: "organizer", tags: [] } });
     renderResults(vi.fn(), { participants: [

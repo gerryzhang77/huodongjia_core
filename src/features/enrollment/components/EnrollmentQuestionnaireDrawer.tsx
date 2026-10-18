@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Eye, EyeOff, LockKeyhole } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import PrivateEnrollmentImageGallery from "@/components/enrollment/PrivateEnrollmentImageGallery";
 import { useAuthStore } from "@/features/auth/stores";
@@ -96,6 +96,7 @@ interface Props {
   name: string;
   imageCount?: number;
   onClose: () => void;
+  returnToCard?: boolean;
 }
 
 export default function EnrollmentQuestionnaireDrawer({
@@ -104,6 +105,7 @@ export default function EnrollmentQuestionnaireDrawer({
   name,
   imageCount = 0,
   onClose,
+  returnToCard = false,
 }: Props) {
   const sessionScope = useAuthStore((state) => state.user?.id || "anonymous");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -155,10 +157,14 @@ export default function EnrollmentQuestionnaireDrawer({
     document.addEventListener("keydown", trapFocus);
     return () => {
       document.removeEventListener("keydown", trapFocus);
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
-        previousFocus.focus();
+      if (
+        !returnToCard &&
+        previousFocus instanceof HTMLElement &&
+        previousFocus.isConnected
+      )
+        previousFocus.focus({ preventScroll: true });
     };
-  }, []);
+  }, [returnToCard]);
   const data = query.data;
   const current = data?.fields.filter((field) => !field.historical) || [];
   const historical = data?.fields.filter((field) => field.historical) || [];
@@ -182,6 +188,20 @@ export default function EnrollmentQuestionnaireDrawer({
       placement="right"
       size="min(100vw, 520px)"
       zIndex={1100}
+      footer={
+        returnToCard ? (
+          <div className="p-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-500 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-2"
+            >
+              <ArrowLeft size={16} aria-hidden="true" />
+              关闭并返回卡片
+            </button>
+          </div>
+        ) : undefined
+      }
     >
       <div ref={contentRef} className="px-5 pb-8 pt-4">
         <div className="rounded-xl bg-gray-50 px-3 py-3 text-xs leading-5 text-gray-500">

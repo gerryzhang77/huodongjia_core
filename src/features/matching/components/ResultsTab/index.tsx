@@ -5,7 +5,15 @@
  * 这里按参与者维度展示：左侧为本人信息，右侧并排显示其 top5 候选，支持展开查看详细排序
  */
 
-import React, { memo, useCallback, useMemo, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -215,6 +223,11 @@ const EnrollmentImageCountBadge: React.FC<{ participant?: Participant }> = ({
   );
 };
 
+interface QuestionnaireOrigin {
+  cardId: string;
+  element: HTMLDivElement;
+}
+
 interface ParticipantHoverPreviewProps {
   activityId: string;
   participant?: Participant;
@@ -223,7 +236,11 @@ interface ParticipantHoverPreviewProps {
   className?: string;
   onViewProfile: (userId: string) => void;
   onOpenFullGallery: (participant: Participant) => void;
-  onOpenQuestionnaire: (participant: Participant) => void;
+  onOpenQuestionnaire: (
+    participant: Participant,
+    origin: QuestionnaireOrigin,
+  ) => void;
+  returnedCardId: string | null;
 }
 
 const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
@@ -235,7 +252,11 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
   onViewProfile,
   onOpenFullGallery,
   onOpenQuestionnaire,
+  returnedCardId,
 }) => {
+  const cardId = useId();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const justViewed = returnedCardId === cardId;
   const queryClient = useQueryClient();
   const sessionScope = useAuthStore(
     (state) => state.user?.id || "anonymous",
@@ -273,7 +294,11 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
         summary={participant?.registrationSummary}
         name={participantName}
         registrationTypeName={participant?.registrationTypeName}
-        onOpen={() => participant && onOpenQuestionnaire(participant)}
+        onOpen={() => {
+          if (participant && cardRef.current) {
+            onOpenQuestionnaire(participant, { cardId, element: cardRef.current });
+          }
+        }}
       />
       {canPreviewImages && (
         <div className="mt-3">
@@ -290,28 +315,44 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
   ) : undefined;
 
   return (
-    <UserHoverCard
-      user={toUserBrief(participant, fallbackId)}
-      placement="bottom"
-      focusable
-      onViewProfile={onViewProfile}
-      showProfileAction={!enrollmentId}
-      actionsSlot={enrollmentId ? (
-        <button type="button" onClick={() => onViewProfile(participant?.id || fallbackId)} className="w-full py-1 text-center text-xs text-gray-500 hover:text-primary-600">
-          查看个人主页
-        </button>
-      ) : undefined}
-      onPrefetch={canPreviewImages ? handlePrefetch : undefined}
-      detailsSlot={detailsSlot}
-      triggerAriaLabel={
-        canPreviewImages
-          ? `查看${participantName}的资料和 ${imageCount} 张报名图片`
-          : `查看${participantName}的资料`
-      }
-      className={className}
+    <div
+      ref={cardRef}
+      tabIndex={-1}
+      role="group"
+      aria-label={`${participantName}的匹配卡片`}
+      className={`relative min-w-0 scroll-m-6 rounded-xl outline-none transition-shadow ${justViewed ? "ring-2 ring-primary-500 ring-offset-2" : ""}`}
     >
-      {children}
-    </UserHoverCard>
+      {justViewed && (
+        <span
+          role="status"
+          className="pointer-events-none absolute -top-2.5 right-2 z-10 rounded-full bg-primary-500 px-2 py-0.5 text-[10px] font-medium text-white shadow-sm"
+        >
+          刚刚查看
+        </span>
+      )}
+      <UserHoverCard
+        user={toUserBrief(participant, fallbackId)}
+        placement="bottom"
+        focusable
+        onViewProfile={onViewProfile}
+        showProfileAction={!enrollmentId}
+        actionsSlot={enrollmentId ? (
+          <button type="button" onClick={() => onViewProfile(participant?.id || fallbackId)} className="w-full py-1 text-center text-xs text-gray-500 hover:text-primary-600">
+            查看个人主页
+          </button>
+        ) : undefined}
+        onPrefetch={canPreviewImages ? handlePrefetch : undefined}
+        detailsSlot={detailsSlot}
+        triggerAriaLabel={
+          canPreviewImages
+            ? `查看${participantName}的资料和 ${imageCount} 张报名图片`
+            : `查看${participantName}的资料`
+        }
+        className={className}
+      >
+        {children}
+      </UserHoverCard>
+    </div>
   );
 };
 
@@ -321,7 +362,8 @@ interface RecommendationParticipantItemProps {
   variant: "compact" | "expanded";
   onViewProfile: (userId: string) => void;
   onOpenFullGallery: (participant: Participant) => void;
-  onOpenQuestionnaire: (participant: Participant) => void;
+  onOpenQuestionnaire: ParticipantHoverPreviewProps["onOpenQuestionnaire"];
+  returnedCardId: string | null;
 }
 
 const RecommendationParticipantItem = memo(
@@ -332,6 +374,7 @@ const RecommendationParticipantItem = memo(
     onViewProfile,
     onOpenFullGallery,
     onOpenQuestionnaire,
+    returnedCardId,
   }: RecommendationParticipantItemProps) => {
     const candidate = match.candidate;
     const participantName =
@@ -345,6 +388,7 @@ const RecommendationParticipantItem = memo(
         onViewProfile={onViewProfile}
         onOpenFullGallery={onOpenFullGallery}
         onOpenQuestionnaire={onOpenQuestionnaire}
+        returnedCardId={returnedCardId}
         className="group w-full rounded-xl focus:outline-none"
       >
         {variant === "compact" ? (
@@ -478,14 +522,53 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   const [editingOwnerId, setEditingOwnerId] = useState<string | null>(null);
   const [imageViewer, setImageViewer] = useState<Participant | null>(null);
   const [questionnaireViewer, setQuestionnaireViewer] = useState<Participant | null>(null);
-  const handleOpenQuestionnaire = useCallback((participant: Participant) => setQuestionnaireViewer(participant), []);
+  const questionnaireOriginRef = useRef<QuestionnaireOrigin | null>(null);
+  const returnFrameRef = useRef<number | null>(null);
+  const [returnedCardId, setReturnedCardId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!returnedCardId) return;
+    const timer = window.setTimeout(() => setReturnedCardId(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [returnedCardId]);
+  useEffect(() => () => {
+    if (returnFrameRef.current !== null) {
+      cancelAnimationFrame(returnFrameRef.current);
+    }
+  }, []);
+  const handleOpenQuestionnaire = useCallback(
+    (participant: Participant, origin: QuestionnaireOrigin) => {
+      if (returnFrameRef.current !== null) {
+        cancelAnimationFrame(returnFrameRef.current);
+      }
+      questionnaireOriginRef.current = origin;
+      setReturnedCardId(null);
+      setQuestionnaireViewer(participant);
+    },
+    [],
+  );
   const handleCloseQuestionnaire = useCallback(() => {
-    const userId = questionnaireViewer?.id;
+    const origin = questionnaireOriginRef.current;
     setQuestionnaireViewer(null);
-    requestAnimationFrame(() => {
-      if (userId) document.getElementById(`matching-result-${userId}`)?.focus({ preventScroll: true });
+    // Restore the exact occurrence, including recommendations repeated in other rows.
+    // Focus its container so returning does not immediately reopen the hover card.
+    returnFrameRef.current = requestAnimationFrame(() => {
+      returnFrameRef.current = null;
+      if (!origin?.element.isConnected) return;
+      setReturnedCardId(origin.cardId);
+      origin.element.focus({ preventScroll: true });
+      const rect = origin.element.getBoundingClientRect();
+      if (
+        rect.top < 0 || rect.bottom > window.innerHeight ||
+        rect.left < 0 || rect.right > window.innerWidth
+      ) {
+        origin.element.scrollIntoView({
+          block: "nearest",
+          inline: "nearest",
+          behavior: "instant",
+        });
+      }
     });
-  }, [questionnaireViewer]);
+  }, []);
   const [feedback, setFeedback] = useState<{
     visible: boolean;
     success: boolean;
@@ -964,6 +1047,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                         onViewProfile={handleViewProfile}
                         onOpenFullGallery={handleOpenEnrollmentImages}
                         onOpenQuestionnaire={handleOpenQuestionnaire}
+                        returnedCardId={returnedCardId}
                         className="group w-full rounded-xl focus:outline-none"
                       >
                         <div className="flex min-h-16 min-w-0 items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 transition-colors group-hover:border-primary-200 group-hover:bg-primary-50 group-focus-visible:border-primary-300 group-focus-visible:bg-primary-50 group-focus-visible:ring-2 group-focus-visible:ring-primary-200">
@@ -1017,6 +1101,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                                 match={match}
                                 variant="compact"
                                 onOpenQuestionnaire={handleOpenQuestionnaire}
+                                returnedCardId={returnedCardId}
                                 onViewProfile={handleViewProfile}
                                 onOpenFullGallery={
                                   handleOpenEnrollmentImages
@@ -1115,6 +1200,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                               match={match}
                               variant="expanded"
                               onOpenQuestionnaire={handleOpenQuestionnaire}
+                              returnedCardId={returnedCardId}
                               onViewProfile={handleViewProfile}
                               onOpenFullGallery={
                                 handleOpenEnrollmentImages
@@ -1309,6 +1395,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
           name={questionnaireViewer.name}
           imageCount={questionnaireViewer.imageCount}
           onClose={handleCloseQuestionnaire}
+          returnToCard
         />
       )}
 
