@@ -41,6 +41,8 @@ import ManualMatchEditor from "../ManualMatchEditor";
 import PrivateEnrollmentImageGallery from "@/components/enrollment/PrivateEnrollmentImageGallery";
 import { prefetchEnrollmentImages } from "@/features/enrollment/hooks/useEnrollmentImages";
 import { useAuthStore } from "@/features/auth/stores";
+import RegistrationSummaryContent from "@/features/enrollment/components/RegistrationSummaryContent";
+import EnrollmentQuestionnaireDrawer from "@/features/enrollment/components/EnrollmentQuestionnaireDrawer";
 import type {
   MatchConstraints,
   MatchingRule,
@@ -132,6 +134,7 @@ const getParticipantTags = (participant?: Participant): string[] => {
 
 const getParticipantMeta = (participant?: Participant): string => {
   if (!participant) return "";
+  if (participant.registrationSummary) return participant.registrationSummary.meta;
 
   const tagText = getParticipantTags(participant).slice(0, 3).join("、");
   if (tagText) return tagText;
@@ -141,13 +144,17 @@ const getParticipantMeta = (participant?: Participant): string => {
     participant.industry,
     participant.company,
     participant.city,
-    participant.registrationTypeName,
   ]
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .slice(0, 2)
     .join(" · ");
 };
+
+const RegistrationTypeBadge = ({ participant }: { participant?: Participant }) =>
+  participant?.showRegistrationType && participant.registrationTypeName ? (
+    <span className="mt-1 inline-block max-w-full truncate rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500" title={participant.registrationTypeName}>{participant.registrationTypeName}</span>
+  ) : null;
 
 /** 头像色块（无头像时的回退） */
 const Avatar: React.FC<{ participant?: Participant; size?: "sm" | "md" | "lg" }> = ({
@@ -216,6 +223,7 @@ interface ParticipantHoverPreviewProps {
   className?: string;
   onViewProfile: (userId: string) => void;
   onOpenFullGallery: (participant: Participant) => void;
+  onOpenQuestionnaire: (participant: Participant) => void;
 }
 
 const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
@@ -226,6 +234,7 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
   className,
   onViewProfile,
   onOpenFullGallery,
+  onOpenQuestionnaire,
 }) => {
   const queryClient = useQueryClient();
   const sessionScope = useAuthStore(
@@ -258,16 +267,27 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
     if (participant) onOpenFullGallery(participant);
   }, [onOpenFullGallery, participant]);
 
-  const detailsSlot =
-    canPreviewImages && enrollmentId ? (
-      <PrivateEnrollmentImageGallery
-        activityId={activityId}
-        participantId={enrollmentId}
-        variant="embedded"
-        maxImages={4}
-        onOpenFullGallery={handleOpenFullGallery}
+  const detailsSlot = enrollmentId ? (
+    <>
+      <RegistrationSummaryContent
+        summary={participant?.registrationSummary}
+        name={participantName}
+        registrationTypeName={participant?.registrationTypeName}
+        onOpen={() => participant && onOpenQuestionnaire(participant)}
       />
-    ) : undefined;
+      {canPreviewImages && (
+        <div className="mt-3">
+          <PrivateEnrollmentImageGallery
+            activityId={activityId}
+            participantId={enrollmentId}
+            variant="embedded"
+            maxImages={4}
+            onOpenFullGallery={handleOpenFullGallery}
+          />
+        </div>
+      )}
+    </>
+  ) : undefined;
 
   return (
     <UserHoverCard
@@ -275,6 +295,12 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
       placement="bottom"
       focusable
       onViewProfile={onViewProfile}
+      showProfileAction={!enrollmentId}
+      actionsSlot={enrollmentId ? (
+        <button type="button" onClick={() => onViewProfile(participant?.id || fallbackId)} className="w-full py-1 text-center text-xs text-gray-500 hover:text-primary-600">
+          查看个人主页
+        </button>
+      ) : undefined}
       onPrefetch={canPreviewImages ? handlePrefetch : undefined}
       detailsSlot={detailsSlot}
       triggerAriaLabel={
@@ -295,6 +321,7 @@ interface RecommendationParticipantItemProps {
   variant: "compact" | "expanded";
   onViewProfile: (userId: string) => void;
   onOpenFullGallery: (participant: Participant) => void;
+  onOpenQuestionnaire: (participant: Participant) => void;
 }
 
 const RecommendationParticipantItem = memo(
@@ -304,6 +331,7 @@ const RecommendationParticipantItem = memo(
     variant,
     onViewProfile,
     onOpenFullGallery,
+    onOpenQuestionnaire,
   }: RecommendationParticipantItemProps) => {
     const candidate = match.candidate;
     const participantName =
@@ -316,6 +344,7 @@ const RecommendationParticipantItem = memo(
         fallbackId={match.candidateId}
         onViewProfile={onViewProfile}
         onOpenFullGallery={onOpenFullGallery}
+        onOpenQuestionnaire={onOpenQuestionnaire}
         className="group w-full rounded-xl focus:outline-none"
       >
         {variant === "compact" ? (
@@ -349,6 +378,7 @@ const RecommendationParticipantItem = memo(
                   {getParticipantMeta(candidate)}
                 </p>
               )}
+              <RegistrationTypeBadge participant={candidate} />
             </div>
             <EnrollmentImageCountBadge participant={candidate} />
           </div>
@@ -383,6 +413,7 @@ const RecommendationParticipantItem = memo(
                   {getParticipantMeta(candidate)}
                 </p>
               )}
+              <RegistrationTypeBadge participant={candidate} />
             </div>
             <EnrollmentImageCountBadge participant={candidate} />
           </article>
@@ -446,6 +477,15 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   const [viewingHistory, setViewingHistory] = useState<MatchingHistory | null>(null);
   const [editingOwnerId, setEditingOwnerId] = useState<string | null>(null);
   const [imageViewer, setImageViewer] = useState<Participant | null>(null);
+  const [questionnaireViewer, setQuestionnaireViewer] = useState<Participant | null>(null);
+  const handleOpenQuestionnaire = useCallback((participant: Participant) => setQuestionnaireViewer(participant), []);
+  const handleCloseQuestionnaire = useCallback(() => {
+    const userId = questionnaireViewer?.id;
+    setQuestionnaireViewer(null);
+    requestAnimationFrame(() => {
+      if (userId) document.getElementById(`matching-result-${userId}`)?.focus({ preventScroll: true });
+    });
+  }, [questionnaireViewer]);
   const [feedback, setFeedback] = useState<{
     visible: boolean;
     success: boolean;
@@ -455,7 +495,8 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
   // 参与者 ID → Participant 查找表
   const participantMap = useMemo(() => {
     const m = new Map<string, Participant>();
-    for (const p of participants) m.set(p.id, p);
+    const typeCount = new Set(participants.map(p => p.registrationTypeId || p.registrationTypeName).filter(Boolean)).size;
+    for (const p of participants) m.set(p.id, { ...p, showRegistrationType: typeCount > 1 });
     return m;
   }, [participants]);
 
@@ -922,6 +963,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                         fallbackId={row.ownerId}
                         onViewProfile={handleViewProfile}
                         onOpenFullGallery={handleOpenEnrollmentImages}
+                        onOpenQuestionnaire={handleOpenQuestionnaire}
                         className="group w-full rounded-xl focus:outline-none"
                       >
                         <div className="flex min-h-16 min-w-0 items-center gap-3 rounded-xl border border-transparent px-2.5 py-2 transition-colors group-hover:border-primary-200 group-hover:bg-primary-50 group-focus-visible:border-primary-300 group-focus-visible:bg-primary-50 group-focus-visible:ring-2 group-focus-visible:ring-primary-200">
@@ -935,6 +977,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                                 {getParticipantMeta(row.owner)}
                               </p>
                             )}
+                            <RegistrationTypeBadge participant={row.owner} />
                             {(row.hasConflict ||
                               row.hasNoMatches ||
                               row.matches.length < constraints.minMatches) && (
@@ -973,6 +1016,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                                 activityId={activityId}
                                 match={match}
                                 variant="compact"
+                                onOpenQuestionnaire={handleOpenQuestionnaire}
                                 onViewProfile={handleViewProfile}
                                 onOpenFullGallery={
                                   handleOpenEnrollmentImages
@@ -1070,6 +1114,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                               activityId={activityId}
                               match={match}
                               variant="expanded"
+                              onOpenQuestionnaire={handleOpenQuestionnaire}
                               onViewProfile={handleViewProfile}
                               onOpenFullGallery={
                                 handleOpenEnrollmentImages
@@ -1255,6 +1300,17 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
             onSaved={onResultsChanged}
           />
         )}
+
+      {questionnaireViewer?.enrollmentId && (
+        <EnrollmentQuestionnaireDrawer
+          key={`${activityId}:${questionnaireViewer.enrollmentId}`}
+          activityId={activityId}
+          enrollmentId={questionnaireViewer.enrollmentId}
+          name={questionnaireViewer.name}
+          imageCount={questionnaireViewer.imageCount}
+          onClose={handleCloseQuestionnaire}
+        />
+      )}
 
       {imageViewer?.enrollmentId && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/45 p-4" onClick={() => setImageViewer(null)}>

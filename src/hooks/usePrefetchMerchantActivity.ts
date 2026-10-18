@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getActivityById } from "@/features/activities/services";
 import { getEnrollmentsDetailed } from "@/features/enrollment/services/enrollmentApi";
 import { matchingQueries } from "@/features/matching/services/matchingQueries";
+import { useAuthStore } from "@/features/auth/stores";
 import {
   merchantCacheTimes,
   merchantQueryKeys,
@@ -16,6 +17,7 @@ const preloadMatchingChunk = () => import("@/pages/merchant/MatchingConfig");
 /** 商家活动卡片和详情页共享的代码、详情与业务数据预取。 */
 export function usePrefetchMerchantActivity() {
   const queryClient = useQueryClient();
+  const sessionScope = useAuthStore(state => state.user?.id || "anonymous");
 
   const prefetchDetail = useCallback(
     (activityId: string) => {
@@ -48,12 +50,12 @@ export function usePrefetchMerchantActivity() {
     (activityId: string) => {
       void preloadMatchingChunk();
       // Prefetch only the shared entry data. Scoped catalogs load on the rules step.
-      void queryClient.prefetchQuery(matchingQueries.participants(activityId));
+      void queryClient.prefetchQuery(matchingQueries.participants(activityId, true, sessionScope));
       void queryClient.prefetchQuery(matchingQueries.results(activityId));
       void queryClient.prefetchQuery(matchingQueries.config(activityId));
       void queryClient.prefetchQuery(matchingQueries.activity(activityId));
     },
-    [queryClient],
+    [queryClient, sessionScope],
   );
 
   return { prefetchDetail, prefetchEnrollment, prefetchMatching };

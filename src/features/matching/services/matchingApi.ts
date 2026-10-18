@@ -654,10 +654,11 @@ export const toggleGroupLock = async (
  */
 export const getParticipants = async (
   activityId: string,
+  view?: "matching-cards",
 ): Promise<Participant[]> => {
   const token = getToken();
 
-  const response = await fetch(`/api/enrollments/${activityId}/participants`, {
+  const response = await fetch(`/api/enrollments/${activityId}/participants${view ? `?view=${view}` : ""}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",

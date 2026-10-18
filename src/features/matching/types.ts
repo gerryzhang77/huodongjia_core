@@ -174,6 +174,7 @@ export interface MatchConstraints {
 
 // 参与者信息
 export interface Participant {
+  registrationSummary?: import("@/features/enrollment/types/questionnaire").RegistrationSummary;
   id: string;
   enrollmentId?: string;
   imageCount?: number;

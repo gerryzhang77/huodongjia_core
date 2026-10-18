@@ -11,6 +11,14 @@ import type {
 } from "../../types";
 import { prefetchEnrollmentImages } from "@/features/enrollment/hooks/useEnrollmentImages";
 import ResultsTab from "./index";
+import type { ResultParticipant } from "./resultViewModel";
+import { useAuthStore } from "@/features/auth/stores";
+import { getEnrollmentQuestionnaire } from "@/features/enrollment/services/questionnaireApi";
+
+vi.mock("@/features/enrollment/services/questionnaireApi", () => ({
+  getEnrollmentQuestionnaire: vi.fn().mockResolvedValue({ enrollmentId: "owner-enrollment", registrationTypeName: "NFC社交匹配问卷", updatedAt: null, answerRevision: 1, fields: [] }),
+  revealQuestionnaireField: vi.fn(),
+}));
 
 vi.mock("@/features/enrollment/hooks/useEnrollmentImages", () => ({
   prefetchEnrollmentImages: vi.fn().mockResolvedValue(undefined),
@@ -55,6 +63,7 @@ const renderResults = (
     resultVersion?: number;
     matchResults?: ParticipantMatchResult[];
     constraints?: MatchConstraints;
+    participants?: ResultParticipant[];
   } = {},
 ) => {
   const queryClient = new QueryClient({
@@ -107,9 +116,41 @@ const renderResults = (
 afterEach(() => {
   vi.useRealTimers();
   vi.mocked(prefetchEnrollmentImages).mockClear();
+  vi.mocked(getEnrollmentQuestionnaire).mockClear();
+  useAuthStore.getState().clearAuth();
 });
 
 describe("ResultsTab interactions", () => {
+  it("removes the shared questionnaire subtitle and opens the protected questionnaire from the summary", async () => {
+    useAuthStore.setState({ user: { id: "organizer", name: "测试主办方", user_type: "organizer", tags: [] } });
+    renderResults(vi.fn(), { participants: [
+      { id: "owner", enrollmentId: "owner-enrollment", name: "参与者甲", registrationTypeId: "type-1", registrationTypeName: "NFC社交匹配问卷", registrationSummary: { formName: "报名姓名甲", meta: "产品经理 · 上海", updatedAt: null, items: [{ key: "goal", label: "参会目标", value: "寻找合作伙伴", tags: null }] } },
+      { id: "candidate", name: "推荐对象乙", registrationTypeId: "type-1", registrationTypeName: "NFC社交匹配问卷" },
+    ] });
+    expect(screen.queryByText("NFC社交匹配问卷")).toBeNull();
+    expect(screen.getByText("产品经理 · 上海")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("button", { name: "查看参与者甲的资料" }), { key: "Enter" });
+    expect(screen.getByText("活动报名资料")).toBeInTheDocument();
+    expect(screen.getByText("寻找合作伙伴")).toBeInTheDocument();
+    expect(getEnrollmentQuestionnaire).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "查看报名问卷" }));
+    expect(screen.getByRole("dialog", { name: "参与者甲的报名问卷" })).toBeInTheDocument();
+    expect(await screen.findByText("暂无可展示的报名资料")).toBeInTheDocument();
+    expect(getEnrollmentQuestionnaire).toHaveBeenCalledWith("event-1", "owner-enrollment", expect.any(AbortSignal));
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog", { name: "参与者甲的报名问卷" })).toBeNull();
+    expect(screen.getByText("产品经理 · 上海")).toBeInTheDocument();
+  });
+
+  it("distinguishes different registration types with badges", () => {
+    renderResults(vi.fn(), { participants: [
+      { id: "owner", name: "参与者甲", registrationTypeId: "type-1", registrationTypeName: "普通参与者" },
+      { id: "candidate", name: "推荐对象乙", registrationTypeId: "type-2", registrationTypeName: "分享嘉宾" },
+    ] });
+    expect(screen.getByText("普通参与者")).toBeInTheDocument();
+    expect(screen.getByText("分享嘉宾")).toBeInTheDocument();
+  });
+
   it("shows explicit zero/partial counts, filters their names, and does not flag supplements as low matches", () => {
     renderResults(vi.fn(), {
       constraints: { ...constraints, minMatches: 2 },

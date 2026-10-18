@@ -32,6 +32,7 @@ describe("matching step loading and cache", () => {
     await waitFor(() => expect(view.result.current.matchResults).toHaveLength(1));
     expect(api.getMatchRules).not.toHaveBeenCalled();
     expect(api.getMatchFieldCatalog).not.toHaveBeenCalled();
+    expect(api.getParticipants).toHaveBeenCalledWith("event", "matching-cards");
     view.unmount(); view.client.clear();
   });
   it("retains previously loaded results when a refresh fails", async () => {

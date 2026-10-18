@@ -1,4 +1,5 @@
 import type { ParticipantMatchResult } from "../../types";
+import type { RegistrationSummary } from "@/features/enrollment/types/questionnaire";
 
 export const COLLAPSED_MATCH_PREVIEW_COUNT = 3;
 
@@ -10,6 +11,8 @@ export const shouldShowMatchListToggle = (matchCount: number): boolean =>
 
 /** 结果页需要的参与者字段（来自报名参与者接口）。 */
 export interface ResultParticipant {
+  showRegistrationType?: boolean;
+  registrationSummary?: RegistrationSummary;
   id: string;
   enrollmentId?: string;
   imageCount?: number;

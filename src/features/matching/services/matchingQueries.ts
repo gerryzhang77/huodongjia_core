@@ -8,7 +8,7 @@ export const matchingParticipantScope = (ids: string[]) => `selected:${[...ids].
 
 // One definition for mounted queries and intent prefetching.
 export const matchingQueries = {
-  participants: (id: string) => queryOptions({ ...common, queryKey: keys.matchingParticipants(id), queryFn: () => getParticipants(id), staleTime: times.matchingParticipantsStale }),
+  participants: (id: string, cardsOnly = false, sessionScope = "") => queryOptions({ ...common, queryKey: cardsOnly ? [...keys.matchingParticipants(id), "cards", sessionScope] : keys.matchingParticipants(id), queryFn: () => getParticipants(id, cardsOnly ? "matching-cards" : undefined), staleTime: times.matchingParticipantsStale }),
   results: (id: string) => queryOptions({ ...common, queryKey: keys.matchingResults(id), queryFn: () => getMatchGroups(id), staleTime: times.matchingResultStale }),
   rules: (id: string) => queryOptions({ ...common, queryKey: keys.matchingRules(id), queryFn: () => getMatchRules(id), staleTime: 30_000 }),
   config: (id: string) => queryOptions({ ...common, queryKey: keys.matchingConfig(id), queryFn: () => getMatchConfig(id), staleTime: 30_000 }),

@@ -12,6 +12,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toast } from "@/components/ui/Toast";
 import { matchingQueries } from "../services/matchingQueries";
+import { useAuthStore } from "@/features/auth/stores";
 import type { Activity } from "@/features/activities/types";
 
 // API 服务函数
@@ -61,6 +62,7 @@ export type TabKey = "rules" | "results";
 export type { MatchConstraints };
 
 export interface Participant {
+  registrationSummary?: import("@/features/enrollment/types/questionnaire").RegistrationSummary;
   id: string;
   name: string;
   gender?: "male" | "female" | "other";
@@ -187,9 +189,10 @@ export function useMatchingLogic({
   const BACKGROUND_POLL_INTERVAL_MS = 5000;
   const queryClient = useQueryClient();
   const queryEnabled = Boolean(activityId);
+  const sessionScope = useAuthStore(state => state.user?.id || "anonymous");
 
   const resultsQuery = useQuery({ ...matchingQueries.results(activityId), enabled: queryEnabled });
-  const participantsQuery = useQuery({ ...matchingQueries.participants(activityId), enabled: queryEnabled });
+  const participantsQuery = useQuery({ ...matchingQueries.participants(activityId, step === "results", sessionScope), enabled: queryEnabled });
   const configQuery = useQuery({ ...matchingQueries.config(activityId), enabled: queryEnabled });
   const needsRules = step === "rules" || step === "preview" || step === "execute";
   const rulesQuery = useQuery({ ...matchingQueries.rules(activityId), enabled: queryEnabled && needsRules });
@@ -942,7 +945,7 @@ export function useMatchingLogic({
     try {
       // Query failures retain existing data. Never replace a failed read with [].
       const queries = [
-        matchingQueries.participants(activityId), matchingQueries.results(activityId),
+        matchingQueries.participants(activityId, step === "results", sessionScope), matchingQueries.results(activityId),
         matchingQueries.config(activityId), matchingQueries.activity(activityId),
         ...(needsRules ? [matchingQueries.rules(activityId)] : []),
         ...(step === "results" ? [matchingQueries.history(activityId)] : []),
@@ -965,6 +968,7 @@ export function useMatchingLogic({
     fieldCatalogEnabled,
     needsRules,
     step,
+    sessionScope,
     queryClient,
     selectedParticipantIds,
   ]);
