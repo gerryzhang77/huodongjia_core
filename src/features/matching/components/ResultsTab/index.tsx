@@ -142,10 +142,23 @@ const getParticipantTags = (participant?: Participant): string[] => {
 
 const getParticipantMeta = (participant?: Participant): string => {
   if (!participant) return "";
-  if (participant.registrationSummary) return participant.registrationSummary.meta;
+  const tags = getParticipantTags(participant);
+  if (participant.registrationSummary) {
+    const meta = participant.registrationSummary.meta;
+    const hasProfileMeta = [
+      participant.occupation,
+      participant.industry,
+      participant.company,
+      participant.city,
+    ].some((value) => String(value || "").trim());
+    // The protected card API uses interests only when no profile summary exists.
+    return !hasProfileMeta && meta && meta === tags.slice(0, 2).join(" · ")
+      ? `兴趣爱好：${meta}`
+      : meta;
+  }
 
-  const tagText = getParticipantTags(participant).slice(0, 3).join("、");
-  if (tagText) return tagText;
+  const tagText = tags.slice(0, 3).join("、");
+  if (tagText) return `兴趣爱好：${tagText}`;
 
   return [
     participant.occupation,
@@ -332,6 +345,7 @@ const ParticipantHoverPreview: React.FC<ParticipantHoverPreviewProps> = ({
       )}
       <UserHoverCard
         user={toUserBrief(participant, fallbackId)}
+        tagsLabel="兴趣爱好"
         placement="bottom"
         focusable
         onViewProfile={onViewProfile}
@@ -1057,7 +1071,7 @@ const ResultsTab: React.FC<ResultsTabProps> = ({
                               {row.owner?.name || row.ownerId.slice(0, 8)}
                             </p>
                             {getParticipantMeta(row.owner) && (
-                              <p className="mt-0.5 truncate text-xs text-gray-500">
+                              <p className="mt-0.5 truncate text-xs text-gray-500" title={getParticipantMeta(row.owner)}>
                                 {getParticipantMeta(row.owner)}
                               </p>
                             )}

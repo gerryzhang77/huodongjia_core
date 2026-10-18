@@ -16,6 +16,7 @@ const GENDER_LABEL: Record<string, string> = {
 
 export const UserCardContent: FC<UserCardContentProps> = ({
   user,
+  tagsLabel,
   onViewProfile,
   actionsSlot,
   detailsSlot,
@@ -142,6 +143,11 @@ export const UserCardContent: FC<UserCardContentProps> = ({
         {/* 标签 */}
         {user.tags && user.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
+            {tagsLabel && (
+              <p className="mb-0.5 w-full text-[10px] font-medium text-gray-500 dark:text-gray-400">
+                {tagsLabel}
+              </p>
+            )}
             {user.tags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}

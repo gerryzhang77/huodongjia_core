@@ -25,6 +25,8 @@ export interface UserBrief {
 export interface UserHoverCardProps {
   /** 用户简要信息 */
   user: UserBrief;
+  /** 标签区标题，按使用场景提供 */
+  tagsLabel?: string;
   /** 匹配度分数 (0-100)，可选 */
   matchScore?: number;
   /** 子元素（触发器，通常是头像） */
@@ -56,6 +58,8 @@ export interface UserHoverCardProps {
 export interface UserCardContentProps {
   /** 用户简要信息 */
   user: UserBrief;
+  /** 标签区标题，按使用场景提供 */
+  tagsLabel?: string;
   /** 匹配度分数 (0-100)，可选 */
   matchScore?: number;
   /** 点击查看详情回调 */

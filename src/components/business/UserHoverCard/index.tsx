@@ -44,6 +44,7 @@ const VIEWPORT_GAP = 8;
  */
 export const UserHoverCard: FC<UserHoverCardProps> = ({
   user,
+  tagsLabel,
   matchScore,
   children,
   placement = "bottom",
@@ -408,6 +409,7 @@ export const UserHoverCard: FC<UserHoverCardProps> = ({
           >
             <UserCardContent
               user={user}
+              tagsLabel={tagsLabel}
               matchScore={matchScore}
               onViewProfile={
                 showProfileAction ? handleViewProfile : undefined
