@@ -242,6 +242,8 @@ const MatchingConfigPage: React.FC = () => {
     try {
       await handleSaveRules("默认配置");
       setWizardStep("execute");
+    } catch {
+      // The save hook reports the error. Stay on the editable rules step.
     } finally {
       setIsSavingRules(false);
     }

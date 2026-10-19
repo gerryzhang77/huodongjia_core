@@ -17,12 +17,48 @@ const setup = (step: "results" | "rules" = "results") => {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(api.getMatchingTaskStatus).mockResolvedValue({ status: "completed", progress: 100, stage: "completed", active: false });
   vi.mocked(api.getParticipants).mockResolvedValue([{ id: "a", name: "甲" }, { id: "b", name: "乙" }]);
   vi.mocked(api.getMatchGroups).mockResolvedValue(resultData);
   vi.mocked(api.getMatchConfig).mockResolvedValue(config);
   vi.mocked(api.getMatchRules).mockResolvedValue([]);
   vi.mocked(api.getMatchingHistory).mockResolvedValue([]);
   vi.mocked(api.getMatchFieldCatalog).mockResolvedValue({ fields: [], totalEligibleParticipants: 2 });
+});
+
+describe("matching task lifecycle", () => {
+  const rule = { id: "rule", name: "兴趣", source_field: "hobby", target_field: "hobby", operator: "exact" as const, weight: 1, enabled: true };
+  const healthy = { canExecute: true, totalParticipants: 2, eligibleParticipants: 2, ruleDiagnostics: [], fieldDiagnostics: [], hardRuleDiagnostics: [], insufficientParticipants: 0, message: "可以匹配" };
+
+  it("shares an automatic preflight with repeated start clicks and submits only once", async () => {
+    vi.mocked(api.getMatchRules).mockResolvedValue([rule]);
+    let finish!: (value: typeof healthy) => void;
+    vi.mocked(api.preflightMatching).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    vi.mocked(api.saveMatchConfig).mockResolvedValue(config);
+    vi.mocked(api.submitMatchingTask).mockResolvedValue({ taskId: "task-1" });
+    const view = setup("rules");
+    await waitFor(() => expect(api.preflightMatching).toHaveBeenCalledTimes(1));
+    let first!: Promise<void>; let second!: Promise<void>;
+    act(() => { first = view.result.current.handleStartMatching(); second = view.result.current.handleStartMatching(); });
+    await act(async () => { finish(healthy); await Promise.all([first, second]); });
+    expect(api.preflightMatching).toHaveBeenCalledTimes(1);
+    expect(api.submitMatchingTask).toHaveBeenCalledTimes(1);
+    expect(api.getMatchingTaskStatus).toHaveBeenCalledWith("event", "task-1");
+    view.unmount(); view.client.clear();
+  });
+
+  it("restores a running task after reopening and retries a transient polling failure", async () => {
+    vi.mocked(api.getMatchingTaskStatus)
+      .mockResolvedValueOnce({ taskId: "task-running", active: true, status: "processing", progress: 40, stage: "matching_embed" })
+      .mockRejectedValueOnce(new Error("network interrupted"))
+      .mockResolvedValue({ taskId: "task-running", active: false, status: "completed", progress: 100, stage: "completed" });
+    const view = setup();
+    await waitFor(() => expect(view.result.current.isMatching).toBe(true));
+    await waitFor(() => expect(view.result.current.matchingMessage).toContain("重试"));
+    await waitFor(() => expect(view.result.current.isMatching).toBe(false), { timeout: 4500 });
+    expect(api.getMatchingTaskStatus).toHaveBeenCalledWith("event", "task-running");
+    view.unmount(); view.client.clear();
+  });
 });
 describe("matching step loading and cache", () => {
   it("shows results without waiting for history or fetching the rules catalog", async () => {
@@ -95,7 +131,7 @@ describe("automatic matching preflight", () => {
     await act(async () => { finishOld({ ...healthy, canExecute: false, insufficientParticipants: 1 }); });
     expect(view.result.current.lastPreflightResult).toBeNull();
     await waitFor(() => expect(view.result.current.lastPreflightResult?.canExecute).toBe(true));
-    expect(api.preflightMatching).toHaveBeenLastCalledWith("event", expect.any(Array), expect.objectContaining({ allowSupplementaryRecommendations: true }), ["a", "b"]);
+    expect(api.preflightMatching).toHaveBeenLastCalledWith("event", expect.any(Array), expect.objectContaining({ allowSupplementaryRecommendations: true }), ["a", "b"], expect.any(AbortSignal));
     act(() => view.result.current.setParticipantsSelected(["a"], false));
     expect(view.result.current.lastPreflightResult).toBeNull();
     expect(view.result.current.selectedParticipantIds).toEqual(["b"]);

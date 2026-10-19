@@ -1,3 +1,4 @@
+import { matchingFetch } from "./matchingRequest";
 /**
  * Matching Module - API Service
  * 匹配模块 - API 服务
@@ -235,7 +236,7 @@ export const getMatchRules = async (
 ): Promise<MatchRule[]> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match/${activityId}/rules`, {
+  const response = await matchingFetch(`/api/match/${activityId}/rules`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -285,7 +286,7 @@ export const saveMatchRules = async (
   const token = getToken();
   const payloadRules = serializeRulesForBackend(rules, { includeDisabled: true });
 
-  const response = await fetch(`/api/match/${activityId}/rules`, {
+  const response = await matchingFetch(`/api/match/${activityId}/rules`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -309,7 +310,7 @@ export const getMatchFieldCatalog = async (
 ): Promise<MatchFieldCatalogResponse> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match/${activityId}/field-catalog`, {
+  const response = await matchingFetch(`/api/match/${activityId}/field-catalog`, {
     method: participantUserIds ? "POST" : "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -335,7 +336,7 @@ export const getMatchConfig = async (
   activityId: string,
 ): Promise<MatchConstraints> => {
   const token = getToken();
-  const response = await fetch(`/api/match/${activityId}/config`, {
+  const response = await matchingFetch(`/api/match/${activityId}/config`, {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   });
   const data = await response.json();
@@ -348,7 +349,7 @@ export const saveMatchConfig = async (
   config: MatchConstraints,
 ): Promise<MatchConstraints> => {
   const token = getToken();
-  const response = await fetch(`/api/match/${activityId}/config`, {
+  const response = await matchingFetch(`/api/match/${activityId}/config`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(config),
@@ -363,12 +364,14 @@ export const preflightMatching = async (
   rules: MatchRule[],
   config?: MatchConstraints,
   participantUserIds?: string[],
+  signal?: AbortSignal,
 ): Promise<MatchPreflightResult> => {
   const token = getToken();
   const payloadRules = serializeRulesForBackend(rules);
 
-  const response = await fetch(`/api/match/${activityId}/preflight`, {
+  const response = await matchingFetch(`/api/match/${activityId}/preflight`, {
     method: "POST",
+    signal,
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -396,7 +399,7 @@ export const updateMatchRule = async (
 ): Promise<MatchRule> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match-rules/${ruleId}`, {
+  const response = await matchingFetch(`/api/match-rules/${ruleId}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -420,7 +423,7 @@ export const updateMatchRule = async (
 export const deleteMatchRule = async (ruleId: string): Promise<void> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match-rules/${ruleId}`, {
+  const response = await matchingFetch(`/api/match-rules/${ruleId}`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -444,7 +447,7 @@ export const generateMatchRules = async (
 ): Promise<GenerateRulesResponse> => {
   const token = getToken();
 
-  const response = await fetch(`/api/events/organizer/${request.activityId}`, {
+  const response = await matchingFetch(`/api/events/organizer/${request.activityId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -472,11 +475,11 @@ export const generateMatchRules = async (
  */
 export const executeMatching = async (
   request: ExecuteMatchRequest,
-): Promise<ExecuteMatchResponse> => {
+): Promise<ExecuteMatchResponse & { taskId?: string }> => {
   const token = getToken();
   const payloadRules = serializeRulesForBackend(request.rules);
 
-  const response = await fetch(`/api/match/${request.activityId}/execute`, {
+  const response = await matchingFetch(`/api/match/${request.activityId}/execute`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -515,6 +518,7 @@ export const executeMatching = async (
   }
 
   return {
+    taskId: data.task_id,
     groups: data.groups || [],
     totalParticipants: data.total_participants || 0,
     groupedParticipants: data.grouped_participants || 0,
@@ -557,7 +561,7 @@ export const getMatchGroups = async (
 }> => {
   const token = getToken();
 
-  const resultsResp = await fetch(`/api/match/${activityId}/results?view=summary`, {
+  const resultsResp = await matchingFetch(`/api/match/${activityId}/results?view=summary`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -633,7 +637,7 @@ export const toggleGroupLock = async (
 ): Promise<void> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match/groups/${groupId}/lock`, {
+  const response = await matchingFetch(`/api/match/groups/${groupId}/lock`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -658,7 +662,7 @@ export const getParticipants = async (
 ): Promise<Participant[]> => {
   const token = getToken();
 
-  const response = await fetch(`/api/enrollments/${activityId}/participants${view ? `?view=${view}` : ""}`, {
+  const response = await matchingFetch(`/api/enrollments/${activityId}/participants${view ? `?view=${view}` : ""}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -686,7 +690,7 @@ export const getMatchingHistory = async (
 ): Promise<MatchingHistory[]> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match/${activityId}/history`, {
+  const response = await matchingFetch(`/api/match/${activityId}/history`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -715,7 +719,7 @@ export const publishMatchingResult = async (
 ): Promise<{ matchStatusId: string; enrollmentIds: string[] }> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match/${activityId}/publish`, {
+  const response = await matchingFetch(`/api/match/${activityId}/publish`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -802,7 +806,7 @@ export const updateParticipantMatches = async (
   override?: { allowOverride: boolean; reason: string },
 ): Promise<{ warning?: string | null }> => {
   const token = getToken();
-  const response = await fetch(`/api/match/${activityId}/results/${sourceUserId}`, {
+  const response = await matchingFetch(`/api/match/${activityId}/results/${sourceUserId}`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ candidateUserIds, ...override }),
@@ -818,7 +822,7 @@ export const setParticipantMatchesLock = async (
   isLocked: boolean,
 ): Promise<{ isLocked: boolean }> => {
   const token = getToken();
-  const response = await fetch(
+  const response = await matchingFetch(
     `/api/match/${activityId}/results/${sourceUserId}/lock`,
     {
       method: "PUT",
@@ -838,7 +842,7 @@ export const validateMatchResults = async (
   activityId: string,
 ): Promise<MatchValidationResult> => {
   const token = getToken();
-  const response = await fetch(`/api/match/${activityId}/validation`, {
+  const response = await matchingFetch(`/api/match/${activityId}/validation`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -859,7 +863,7 @@ export const createMatchAdjustmentDraft = async (
   reused?: boolean;
 }> => {
   const token = getToken();
-  const response = await fetch(`/api/match/${activityId}/adjustment-drafts`, {
+  const response = await matchingFetch(`/api/match/${activityId}/adjustment-drafts`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -881,9 +885,8 @@ export const submitMatchingTask = async (
   config?: MatchConstraints,
   participantUserIds?: string[],
 ): Promise<{ taskId: string }> => {
-  await executeMatching({ activityId, rules, config, participantUserIds });
-  // 后端立即返回 success，异步执行匹配；用 activityId 作为轮询 key
-  return { taskId: activityId };
+  const result = await executeMatching({ activityId, rules, config, participantUserIds });
+  return { taskId: result.taskId || activityId };
 };
 
 /**
@@ -891,7 +894,10 @@ export const submitMatchingTask = async (
  */
 export const getMatchingTaskStatus = async (
   eventId: string,
+  taskId?: string,
 ): Promise<{
+  taskId?: string;
+  active?: boolean;
   status: "pending" | "processing" | "completed" | "failed";
   progress: number;
   stage: string;
@@ -899,7 +905,7 @@ export const getMatchingTaskStatus = async (
 }> => {
   const token = getToken();
 
-  const response = await fetch(`/api/match/${eventId}/progress`, {
+  const response = await matchingFetch(`/api/match/${eventId}/progress${taskId && taskId !== eventId ? `?taskId=${encodeURIComponent(taskId)}` : ""}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
@@ -956,6 +962,8 @@ export const getMatchingTaskStatus = async (
       : stageMessage;
 
   return {
+    taskId: data.task_id,
+    active: data.active,
     status: statusMap[backendStatus] ?? "processing",
     progress: progressMap[backendStatus] ?? 50,
     stage: backendStatus,

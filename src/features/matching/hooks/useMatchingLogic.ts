@@ -288,6 +288,10 @@ export function useMatchingLogic({
   const taskPollingRef = useRef<NodeJS.Timeout | null>(null);
   const currentTaskIdRef = useRef<string | null>(null);
   const preflightFingerprintRef = useRef<string | null>(null);
+  const preflightRequestRef = useRef<{ key: string; createdAt: number; controller: AbortController; promise: Promise<MatchPreflightResult> } | null>(null);
+  const startingRef = useRef(false);
+  const pollInFlightRef = useRef(false);
+  const pollFailuresRef = useRef(0);
 
   // 统计
   const [matchingStats, setMatchingStats] = useState<MatchingStats | null>(
@@ -408,29 +412,51 @@ export function useMatchingLogic({
     setExcludedParticipantIds(new Set());
   }, []);
 
+  const getPreflight = useCallback((fingerprint: string) => {
+    const previous = preflightRequestRef.current;
+    if (previous?.key === fingerprint && Date.now() - previous.createdAt < 30_000) return previous.promise;
+    previous?.controller.abort();
+    const settings = JSON.parse(fingerprint) as { rules: MatchRule[]; constraints: MatchConstraints; participantUserIds: string[] };
+    const controller = new AbortController();
+    const enabled = settings.rules.filter(rule => rule.enabled && rule.source_field && rule.target_field && rule.operator);
+    const promise = preflightMatching(activityId, enabled, settings.constraints, settings.participantUserIds, controller.signal);
+    const request = { key: fingerprint, controller, promise, createdAt: Date.now() };
+    preflightRequestRef.current = request;
+    void promise.catch(() => { if (preflightRequestRef.current === request) preflightRequestRef.current = null; });
+    return promise;
+  }, [activityId]);
+
   useEffect(() => {
     setLastPreflightResult(null);
     preflightFingerprintRef.current = null;
     setPreflightError(null);
-    setIsCheckingAvailability(false);
+    return () => { preflightRequestRef.current?.controller.abort(); preflightRequestRef.current = null; };
+  }, [activityId, settingsFingerprint]);
+
+  useEffect(() => {
     const settings = JSON.parse(settingsFingerprint) as { rules: MatchRule[]; constraints: MatchConstraints; participantUserIds: string[] };
     const enabled = settings.rules.filter(rule => rule.enabled && rule.source_field && rule.target_field && rule.operator);
     if (!activityId || !rulesQuery.isSuccess || !configQuery.isSuccess || !participantsQuery.isSuccess ||
-      !["rules", "preview", "execute"].includes(step) || isMatching || enabled.length === 0 || settings.participantUserIds.length < 2) return;
+      !["rules", "preview", "execute"].includes(step) || isMatching || enabled.length === 0 || settings.participantUserIds.length < 2) {
+      setIsCheckingAvailability(false);
+      return;
+    }
     let active = true;
     setIsCheckingAvailability(true);
     const timer = setTimeout(() => {
-      void preflightMatching(activityId, enabled, settings.constraints, settings.participantUserIds)
+      void getPreflight(settingsFingerprint)
         .then(result => {
           if (!active || currentSettingsRef.current !== settingsFingerprint) return;
           preflightFingerprintRef.current = settingsFingerprint;
           setLastPreflightResult(result);
-        }).catch(() => {
-          if (active) setPreflightError("检查暂时失败，开始匹配时将重新检查");
+          setPreflightError(null);
+        }).catch(error => {
+          if (active && !preflightRequestRef.current?.controller.signal.aborted) setPreflightError(error instanceof Error ? error.message : "检查暂时失败，开始匹配时将重新检查");
         }).finally(() => { if (active) setIsCheckingAvailability(false); });
     }, 600);
+    // Step changes reuse the same request; only a settings change/unmount aborts it.
     return () => { active = false; clearTimeout(timer); };
-  }, [activityId, settingsFingerprint, step, isMatching, rulesQuery.isSuccess, configQuery.isSuccess, participantsQuery.isSuccess]);
+  }, [activityId, settingsFingerprint, step, isMatching, rulesQuery.isSuccess, configQuery.isSuccess, participantsQuery.isSuccess, getPreflight]);
 
   useEffect(() => {
     if (configQuery.data && !constraintsDirty.current) setConstraintsState(configQuery.data);
@@ -540,70 +566,79 @@ export function useMatchingLogic({
   // === 轮询任务状态（传入 activityId） ===
   const pollTaskStatus = useCallback(
     async (eventId: string) => {
+      const taskId = currentTaskIdRef.current;
+      if (!taskId || pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
       try {
-        const status = await getMatchingTaskStatus(eventId);
-
+        const status = await getMatchingTaskStatus(eventId, taskId);
+        if (currentTaskIdRef.current !== taskId) return;
+        pollFailuresRef.current = 0;
         setMatchingProgress(status.progress);
         setMatchingMessage(status.message || "");
-
-        if (status.status === "completed") {
-          // 任务完成，停止轮询
-          clearTaskPolling();
-          currentTaskIdRef.current = null;
-
-          // Failed reads retain the last good result instead of caching an empty success.
-          setIsMatching(false);
-          setIsRulesLocked(false);
-          const [resultRefresh] = await Promise.allSettled([
-            queryClient.fetchQuery({ ...matchingQueries.results(activityId), staleTime: 0 }),
-            queryClient.fetchQuery({ ...matchingQueries.history(activityId), staleTime: 0 }),
-          ]);
-          void queryClient.invalidateQueries({
-            queryKey: merchantQueryKeys.activities(),
-          });
-
-          Toast.show({
-            content: resultRefresh.status === "fulfilled" ? "匹配完成" : "匹配已完成，结果加载失败，请刷新重试",
-            icon: resultRefresh.status === "fulfilled" ? "success" : "fail",
-          });
-        } else if (status.status === "failed") {
-          // 任务失败
+        if (status.status === "completed" || status.status === "failed") {
           clearTaskPolling();
           currentTaskIdRef.current = null;
           setIsMatching(false);
           setIsRulesLocked(false);
-          setStage("configuring");
-          Toast.show({ content: status.message || "匹配失败", icon: "fail" });
-        } else {
-          clearTaskPolling();
-          taskPollingRef.current = setTimeout(() => {
-            void pollTaskStatus(eventId);
-          }, isBackgroundMatching ? BACKGROUND_POLL_INTERVAL_MS : FOREGROUND_POLL_INTERVAL_MS);
+          if (status.status === "failed") {
+            setStage("configuring");
+            Toast.show({ content: status.message || "匹配失败", icon: "fail" });
+          } else {
+            const [resultRefresh] = await Promise.allSettled([
+              queryClient.fetchQuery({ ...matchingQueries.results(activityId), staleTime: 0 }),
+              queryClient.fetchQuery({ ...matchingQueries.history(activityId), staleTime: 0 }),
+            ]);
+            void queryClient.invalidateQueries({ queryKey: merchantQueryKeys.activities() });
+            Toast.show({ content: resultRefresh.status === "fulfilled" ? "匹配完成" : "匹配已完成，结果加载失败，请刷新重试", icon: resultRefresh.status === "fulfilled" ? "success" : "fail" });
+          }
         }
       } catch (error) {
-        console.error("Failed to poll task status:", error);
+        if (currentTaskIdRef.current !== taskId) return;
+        pollFailuresRef.current += 1;
+        setMatchingMessage(`进度连接暂时中断，正在重试（${pollFailuresRef.current}/5）`);
+        if (pollFailuresRef.current >= 5) {
+          currentTaskIdRef.current = null;
+          setIsMatching(false);
+          setIsRulesLocked(false);
+          clearTaskPolling();
+          Toast.show({ content: "暂时无法获取进度，后台任务仍会继续，请刷新页面查看", icon: "fail" });
+        }
+      } finally {
+        pollInFlightRef.current = false;
+        if (currentTaskIdRef.current === taskId) {
+          clearTaskPolling();
+          taskPollingRef.current = setTimeout(() => void pollTaskStatus(eventId),
+            pollFailuresRef.current ? Math.min(15_000, 3000 * pollFailuresRef.current) : isBackgroundMatching ? BACKGROUND_POLL_INTERVAL_MS : FOREGROUND_POLL_INTERVAL_MS);
+        }
       }
     },
-    [
-      activityId,
-      clearTaskPolling,
-      isBackgroundMatching,
-      queryClient,
-    ],
+    [activityId, clearTaskPolling, isBackgroundMatching, queryClient],
   );
 
   useEffect(() => {
-    if (!isMatching || !currentTaskIdRef.current) {
-      return;
-    }
-
-    clearTaskPolling();
-    taskPollingRef.current = setTimeout(() => {
-      void pollTaskStatus(currentTaskIdRef.current!);
-    }, isBackgroundMatching ? BACKGROUND_POLL_INTERVAL_MS : FOREGROUND_POLL_INTERVAL_MS);
-
+    if (!isMatching || !currentTaskIdRef.current) return;
+    void pollTaskStatus(activityId);
     return clearTaskPolling;
-  }, [clearTaskPolling, isBackgroundMatching, isMatching, pollTaskStatus]);
+  }, [activityId, clearTaskPolling, isBackgroundMatching, isMatching, pollTaskStatus]);
+
+  useEffect(() => {
+    if (!queryEnabled) return;
+    let active = true;
+    void (async () => {
+      try {
+        const status = await getMatchingTaskStatus(activityId);
+        if (!active || !status?.active || !status.taskId || currentTaskIdRef.current) return;
+        currentTaskIdRef.current = status.taskId;
+        pollFailuresRef.current = 0;
+        setIsMatching(true);
+        setIsRulesLocked(true);
+        setStage("matching");
+        setMatchingProgress(status.progress);
+        setMatchingMessage(status.message || "正在恢复匹配进度...");
+      } catch { /* A page with no previous run can still configure matching. */ }
+    })();
+    return () => { active = false; currentTaskIdRef.current = null; clearTaskPolling(); };
+  }, [activityId, queryEnabled, clearTaskPolling]);
 
   const handleRunPreflight = useCallback(async () => {
     const normalizedRules = rules.map((rule, index) =>
@@ -629,12 +664,7 @@ export function useMatchingLogic({
     setIsPreflighting(true);
     const requestedFingerprint = currentSettingsRef.current;
     try {
-      const preflightResult = await preflightMatching(
-        activityId,
-        enabledRules,
-        constraints,
-        selectedParticipantIds,
-      );
+      const preflightResult = await getPreflight(requestedFingerprint);
       if (requestedFingerprint !== currentSettingsRef.current) return null;
       preflightFingerprintRef.current = requestedFingerprint;
       setLastPreflightResult(preflightResult);
@@ -653,7 +683,7 @@ export function useMatchingLogic({
       return { normalizedRules, enabledRules, preflightResult };
     } catch (error) {
       console.error("Matching preflight failed:", error);
-      Toast.show({ content: "匹配预检失败", icon: "fail" });
+      if (requestedFingerprint === currentSettingsRef.current) Toast.show({ content: error instanceof Error ? error.message : "匹配预检失败", icon: "fail" });
       return null;
     } finally {
       setIsPreflighting(false);
@@ -664,10 +694,11 @@ export function useMatchingLogic({
     eligibleParticipantCount,
     rules,
     selectedParticipantIds,
+    getPreflight,
   ]);
 
   // === 开始匹配 (异步任务) ===
-  const handleStartMatching = useCallback(async () => {
+  const runStartMatching = useCallback(async () => {
     const currentNormalizedRules = rules.map((rule, index) =>
       normalizeRuleForUi(rule, index),
     );
@@ -678,7 +709,8 @@ export function useMatchingLogic({
     });
     const cachedPreflightIsCurrent =
       lastPreflightResult?.canExecute === true &&
-      preflightFingerprintRef.current === fingerprint;
+      preflightFingerprintRef.current === fingerprint &&
+      Date.now() - (preflightRequestRef.current?.createdAt || 0) < 30_000;
     const preflight = cachedPreflightIsCurrent
       ? {
           normalizedRules: currentNormalizedRules,
@@ -712,6 +744,7 @@ export function useMatchingLogic({
         selectedParticipantIds,
       );
       currentTaskIdRef.current = taskId;
+      pollFailuresRef.current = 0;
       clearTaskPolling();
       void pollTaskStatus(activityId);
     } catch (error) {
@@ -741,6 +774,12 @@ export function useMatchingLogic({
     rules,
     selectedParticipantIds,
   ]);
+
+  const handleStartMatching = useCallback(async () => {
+    if (startingRef.current || currentTaskIdRef.current) return;
+    startingRef.current = true;
+    try { await runStartMatching(); } finally { startingRef.current = false; }
+  }, [runStartMatching]);
 
   // === 最小化匹配进度到后台 ===
   const handleMinimizeMatching = useCallback(() => {

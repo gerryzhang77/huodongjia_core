@@ -13,7 +13,10 @@ describe("getMatchFieldCatalog", () => {
         data: { fields: [], totalEligibleParticipants: 0 },
       }),
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", async (...args: unknown[]) => {
+      const result = await fetchMock(...args);
+      return Response.json(await result.json());
+    });
     localStorage.setItem(
       "auth-storage",
       JSON.stringify({ state: { token: "test-token" } }),
