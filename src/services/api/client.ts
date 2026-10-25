@@ -45,10 +45,10 @@ function getApiBaseURL(): string {
   }
 
   // 生产模式：使用环境变量配置的后端 URL
-  // 如果使用 Vercel 代理，返回空字符串
+  // 使用同域 /api，由生产环境反向代理转发。
   const isProductionMode = import.meta.env.VITE_PRODUCTION_MODE === "true";
   if (isProductionMode) {
-    return ""; // 使用相对路径，通过 Vercel Serverless Function 代理
+    return "";
   }
 
   // 开发环境连接真实后端时使用相对路径，交给 Vite dev server 代理。
