@@ -5,10 +5,23 @@ ROOT="$(cd "$HERE/.." && pwd)"
 source "$HERE/server-lib.sh"
 MODE="${1:---plan}"
 REV="$(git -C "$ROOT" rev-parse --verify "${DEPLOY_REV:-HEAD}^{commit}")"
-case "$MODE" in --plan|--apply|--rollback) ;; *) exit 1;; esac
-echo "Frontend $REV -> $SERVER_USER@$SERVER_HOST:$WEB_BASE/releases/$REV"
+case "$MODE" in --plan|--check|--apply|--rollback) ;; *) exit 1;; esac
+check_access() {
+  remote_bash "$WEB_BASE" <<'REMOTE'
+set -Eeuo pipefail
+[[ "$(id -un)" == eventadmin && "$HOME" == /home/eventadmin && "$PM2_HOME" == /home/eventadmin/.pm2 ]]
+for dir in "$1" "$1/releases" "$1/assets"; do
+  [[ -d "$dir" && -w "$dir" && -x "$dir" ]] || { echo "Frontend directory is not writable: $dir" >&2; exit 1; }
+done
+for tool in tar rsync; do command -v "$tool" >/dev/null; done
+echo 'Frontend access verified as eventadmin; no release changed.'
+REMOTE
+}
+echo "Frontend $REV -> $SERVER_USER@$SERVER_HOST:$WEB_BASE/releases/$REV (run as eventadmin)"
 [[ "$MODE" != --plan ]] || exit 0
+if [[ "$MODE" == --check ]]; then check_access; exit 0; fi
 [[ "${DEPLOY_REV:-}" == "$REV" ]] || { echo 'Pin DEPLOY_REV to a full commit.' >&2; exit 1; }
+check_access
 if [[ "$MODE" == --apply ]]; then
   BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/eventclub-frontend.XXXXXX")"
   trap 'rm -rf "$BUILD_DIR"' EXIT
