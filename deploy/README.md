@@ -35,13 +35,10 @@ hash 资源保留在共享 assets 目录，避免旧页面加载失败；清理�
 DNS 生效后，在自己的 SSH 终端执行：
 
 ```bash
-sudo /opt/eventclub/certbot/bin/certbot certonly --webroot -w /var/www/eventclub/acme \
-  --cert-name www.eventclub.cn -d www.eventclub.cn -d eventclub.cn \
-  --agree-tos --register-unsafely-without-email --non-interactive
-sudo bash /home/eventadmin/eventclub/bootstrap/bootstrap.sh --https
+sudo bash /home/eventadmin/eventclub/bootstrap/enable-https.sh
 ```
 
-此示例不提供联系邮箱；可替换为 `--email <运维邮箱>`。证书签发前处于短时维护模式。初始化已配置每天两次检查续期，并在续期后校验、重载 Nginx。
+脚本不提供联系邮箱；需要时可将其中 `--register-unsafely-without-email` 替换为 `--email <运维邮箱>`。证书签发前处于短时维护模式。网络超时最多尝试 3 次，签发后启用 HTTPS 并执行一次 staging 续期演练。初始化已配置每天两次检查续期，并在续期后校验、重载 Nginx；续期失败后每隔 5 分钟重试，1 小时内最多 3 次。域名验证或配置错误不会在签发脚本中盲目重试。
 
 ## 运维与验收
 
